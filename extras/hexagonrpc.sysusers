@@ -1,0 +1,2 @@
+# hexagonrpcd runs as this user (see hexagonrpcd-*.service)
+u fastrpc - "FastRPC file server" /var/empty

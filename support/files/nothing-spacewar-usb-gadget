@@ -1,0 +1,47 @@
+#!/usr/bin/bash
+# USB networking for bring-up: expose an NCM network interface over the
+# USB-C port (the same idea as Nura's USB networking). The phone takes
+# 172.16.42.1 and hands the computer an address by DHCP (NetworkManager
+# "shared" connection nothing-spacewar-usb), so `ssh USER@172.16.42.1` works.
+#
+#   nothing-spacewar-usb-gadget start|stop
+set -eu
+
+G=/sys/kernel/config/usb_gadget/spacewar
+
+start() {
+    modprobe libcomposite 2>/dev/null || true
+    mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
+    [ -d "$G" ] && stop
+    udc="$(ls /sys/class/udc 2>/dev/null | head -n1)"
+    [ -n "$udc" ] || { echo "no USB device controller found" >&2; exit 1; }
+
+    mkdir -p "$G"
+    echo 0x1d6b > "$G/idVendor"     # Linux Foundation
+    echo 0x0104 > "$G/idProduct"    # Multifunction Composite Gadget
+    mkdir -p "$G/strings/0x409"
+    echo "Nothing" > "$G/strings/0x409/manufacturer"
+    echo "Phone (1) Fedora" > "$G/strings/0x409/product"
+    serial="$(cat /etc/machine-id 2>/dev/null | cut -c1-16)"
+    echo "${serial:-spacewar}" > "$G/strings/0x409/serialnumber"
+
+    mkdir -p "$G/functions/ncm.usb0"
+    mkdir -p "$G/configs/c.1/strings/0x409"
+    echo "NCM" > "$G/configs/c.1/strings/0x409/configuration"
+    ln -s "$G/functions/ncm.usb0" "$G/configs/c.1/"
+    echo "$udc" > "$G/UDC"
+}
+
+stop() {
+    [ -d "$G" ] || return 0
+    echo "" > "$G/UDC" 2>/dev/null || true
+    rm -f "$G/configs/c.1/ncm.usb0"
+    rmdir "$G/configs/c.1/strings/0x409" "$G/configs/c.1" \
+          "$G/functions/ncm.usb0" "$G/strings/0x409" "$G" 2>/dev/null || true
+}
+
+case "${1:-}" in
+    start) start ;;
+    stop) stop ;;
+    *) echo "usage: $0 start|stop" >&2; exit 2 ;;
+esac

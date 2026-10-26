@@ -1,0 +1,107 @@
+#!/usr/bin/python3
+"""Write an Android boot image (header version 0-2) for the Nothing Phone (1).
+
+A small re-implementation of AOSP's mkbootimg for the header versions this
+phone's bootloader accepts, so the kit doesn't depend on a Fedora package
+that may or may not ship mkbootimg. Layout and the SHA-1 "id" follow AOSP's
+mkbootimg.py; unpack_bootimg from android-tools reads the result.
+"""
+import argparse
+import hashlib
+import struct
+import sys
+
+BOOT_MAGIC = b"ANDROID!"
+BOOT_NAME_SIZE = 16
+BOOT_ARGS_SIZE = 512
+BOOT_EXTRA_ARGS_SIZE = 1024
+HEADER_SIZE = {0: 1632, 1: 1648, 2: 1660}
+
+
+def read(path):
+    if not path:
+        return b""
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def pad(data, page):
+    return data + b"\0" * (-len(data) % page)
+
+
+def num(text):
+    return int(text, 0)
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--kernel", required=True)
+    p.add_argument("--ramdisk", required=True)
+    p.add_argument("--dtb", help="DTB for the header v2 dtb section")
+    p.add_argument("--append-dtb", help="DTB appended to the kernel image")
+    p.add_argument("--cmdline", default="")
+    p.add_argument("--base", type=num, default=0)
+    p.add_argument("--kernel-offset", type=num, default=0x8000)
+    p.add_argument("--ramdisk-offset", type=num, default=0x01000000)
+    p.add_argument("--second-offset", type=num, default=0)
+    p.add_argument("--tags-offset", type=num, default=0x100)
+    p.add_argument("--dtb-offset", type=num, default=0x01f00000)
+    p.add_argument("--pagesize", type=num, default=4096)
+    p.add_argument("--header-version", type=int, default=2, choices=(0, 1, 2))
+    p.add_argument("-o", "--output", required=True)
+    a = p.parse_args()
+
+    kernel = read(a.kernel) + read(a.append_dtb)
+    ramdisk = read(a.ramdisk)
+    second = b""
+    recovery_dtbo = b""
+    dtb = read(a.dtb) if a.header_version >= 2 else b""
+
+    cmdline = a.cmdline.encode()
+    if len(cmdline) > BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE - 2:
+        sys.exit("spacewar-mkbootimg: kernel command line too long")
+    args, extra = cmdline[:BOOT_ARGS_SIZE - 1], cmdline[BOOT_ARGS_SIZE - 1:]
+
+    sha = hashlib.sha1()
+    blobs = [kernel, ramdisk, second]
+    if a.header_version >= 1:
+        blobs.append(recovery_dtbo)
+    if a.header_version >= 2:
+        blobs.append(dtb)
+    for blob in blobs:
+        sha.update(blob)
+        sha.update(struct.pack("<I", len(blob)))
+    img_id = sha.digest().ljust(32, b"\0")
+
+    hdr = BOOT_MAGIC
+    hdr += struct.pack(
+        "<10I",
+        len(kernel), a.base + a.kernel_offset,
+        len(ramdisk), a.base + a.ramdisk_offset,
+        len(second), a.base + a.second_offset,
+        a.base + a.tags_offset,
+        a.pagesize,
+        a.header_version,
+        0,  # os_version: unset, as pmbootstrap leaves it
+    )
+    hdr += b"\0" * BOOT_NAME_SIZE
+    hdr += args.ljust(BOOT_ARGS_SIZE, b"\0")
+    hdr += img_id
+    hdr += extra.ljust(BOOT_EXTRA_ARGS_SIZE, b"\0")
+    if a.header_version >= 1:
+        # recovery_dtbo_size, recovery_dtbo_offset, header_size
+        hdr += struct.pack("<IQI", 0, 0, HEADER_SIZE[a.header_version])
+    if a.header_version >= 2:
+        hdr += struct.pack("<IQ", len(dtb), a.base + a.dtb_offset)
+    assert len(hdr) == HEADER_SIZE[a.header_version], len(hdr)
+
+    with open(a.output, "wb") as out:
+        out.write(pad(hdr, a.pagesize))
+        out.write(pad(kernel, a.pagesize))
+        out.write(pad(ramdisk, a.pagesize))
+        if dtb:
+            out.write(pad(dtb, a.pagesize))
+
+
+if __name__ == "__main__":
+    main()

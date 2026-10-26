@@ -1,0 +1,144 @@
+# Fedora for the Nothing Phone (1)
+
+An unofficial kit that builds a Fedora mobile system (Phosh or Plasma Mobile)
+for the Nothing Phone (1), codename Spacewar, on a mainline Linux kernel.
+
+> **Status: untested.** Nothing here has been booted on a phone yet. It is
+> built on the work of the [Nura](https://nura.eco) (formerly postmarketOS)
+> Spacewar port, which does boot: kernel, configuration, firmware and boot
+> image layout all come from there. Written with an AI assistant (Claude).
+> Not affiliated with Nura, Nothing, or the Fedora Project. Read the scripts
+> before running them as root.
+
+It reuses:
+
+- **Kernel:** [sc7280-mainline/linux](https://github.com/sc7280-mainline/linux)
+  tag `v7.2.9-sc7280`, with Nura's kernel configuration.
+- **Firmware:** [mainlining/firmware-nothing-spacewar](https://github.com/mainlining/firmware-nothing-spacewar).
+- **Audio profiles:** [sc7280-mainline/alsa-ucm-conf](https://github.com/sc7280-mainline/alsa-ucm-conf).
+- **Tools:** [hexagonrpc](https://github.com/linux-msm/hexagonrpc) (sensors) and
+  [qbootctl](https://github.com/linux-msm/qbootctl) (A/B slots), which Fedora
+  doesn't package.
+
+All versions are pinned in `config.env`.
+
+## Expected status
+
+What should work is what works in Nura (see `docs/hardware-findings.md`):
+display, touch, GPU, battery, Bluetooth, GPS, SMS, mobile data, USB. Audio,
+calls, haptics and the fingerprint reader don't work there yet; Wi-Fi, NFC and
+cameras are partial. Sensors need a libssc-enabled iio-sensor-proxy that
+Fedora doesn't ship.
+
+## How it boots
+
+The phone's bootloader has no GRUB or boot menu: it loads one Android boot
+image (kernel, initramfs, device tree) from the boot partition of the active
+slot. The root filesystem lives in the `userdata` partition.
+
+`nothing-spacewar-support` adds a kernel-install plugin, so a kernel update
+works like on any Fedora system: dnf installs `kernel-spacewar`, dracut builds
+the initramfs, and the plugin packs a boot image into
+`/boot/nothing-spacewar/` and writes it to the active boot slot. To keep the
+boot partition untouched, set `FLASH_ON_UPDATE=no` in
+`/etc/nothing-spacewar/boot.conf` and flash the image yourself.
+
+## What's in the kit
+
+| Path | Purpose |
+|---|---|
+| `build.sh` | Entry point: `deps`, `kernel`, `firmware`, `support`, `extras`, `rootfs`, `all` |
+| `config.env` | Pinned sources, boot image layout, kernel command line, Fedora release, UI |
+| `kernel/` | Cross-compiles the kernel with clang and packages it as `kernel-spacewar`. `fedora.config` adds SELinux, compressed firmware and USB gadget networking to Nura's config. Patches in `kernel/patches/` are applied first. |
+| `firmware/` | Packages the firmware as `nothing-spacewar-firmware` |
+| `support/` | `nothing-spacewar-support`: boot image plugin and writer, dracut settings, service presets, USB networking, `nothing-spacewar-backup`, audio profiles |
+| `extras/` | Builds `hexagonrpc` and `qbootctl` for aarch64 with mock |
+| `image/build-rootfs.sh` | Builds `out/rootfs.img` and `out/boot.img` from Fedora's aarch64 repositories |
+| `docs/hardware-findings.md` | What is known about each piece of hardware and the plan |
+
+## Step 1: Build
+
+On a Fedora machine with about 30 GB free:
+
+```bash
+./build.sh deps                     # once; then add yourself to the mock group
+./build.sh kernel
+./build.sh firmware
+./build.sh support
+./build.sh extras
+sudo ./build.sh rootfs --user yourname
+```
+
+`rootfs` asks for the password of the phone's user account. Digits make the
+lock screen easiest. Choose the shell with `UI=plasma-mobile` (default
+`phosh`) and the Fedora release with `FEDORA_RELEASE=`.
+
+If downloading Nura's kernel config fails (its GitLab has bot protection),
+open the URL from `NURA_CONFIG_URL` in `config.env` in a browser, save the
+file, and run `./build.sh kernel --config-file FILE`. It is still checked
+against the pinned SHA-512.
+
+## Step 2: Before flashing
+
+- **Unlock the bootloader.** This erases the phone. Nothing's process is like
+  a Pixel's: enable OEM unlocking in Developer options, boot to the bootloader
+  (Volume Down + Power) and run `fastboot flashing unlock`.
+- **Download Nothing's stock fastboot images for your exact Nothing OS
+  version.** That is the way back to Android, including the `dtbo` partition
+  erased below.
+- **Back up `persist` and the modem partitions** as soon as Linux runs (step 4).
+  They hold the Wi-Fi/Bluetooth MAC addresses, sensor calibration and the
+  modem's per-device data, and no stock package contains them. Flashing
+  doesn't touch them, but a mistake later could.
+
+## Step 3: Flash
+
+In the bootloader (Volume Down + Power), following Nura's instructions:
+
+```bash
+fastboot -w                              # wipe userdata
+fastboot erase dtbo                      # Android's device tree overlay breaks the mainline one
+fastboot flash userdata out/rootfs.img
+fastboot boot out/boot.img               # try it once without writing the boot partition
+```
+
+The first boot relabels the filesystem for SELinux and reboots once. Because
+`fastboot boot` doesn't write anything, that reboot returns to Android's
+bootloader; run `fastboot boot out/boot.img` again.
+
+When it works, make it permanent:
+
+```bash
+fastboot flash boot out/boot.img
+fastboot reboot
+```
+
+## Step 4: First login and backup
+
+Connect the phone by USB. It appears as a network adapter and hands your
+computer an address:
+
+```bash
+ssh yourname@172.16.42.1
+sudo nothing-spacewar-backup
+exit
+scp -r 'yourname@172.16.42.1:/var/lib/nothing-spacewar/backup-*' .
+```
+
+Keep that backup somewhere safe.
+
+## Updating
+
+Rebuild the packages and copy them over, or serve `out/rpms` as a repository.
+On the phone, `sudo dnf install ./kernel-spacewar-*.rpm` writes the new kernel
+to the boot slot. Fedora's own kernel is excluded from dnf; it can't boot this
+phone.
+
+If a new kernel doesn't boot, boot the previous image from your computer
+(`fastboot boot boot-<version>.img`, copied from `/boot/nothing-spacewar/` on
+the phone) and remove the broken kernel.
+
+## Getting back to Android
+
+Flash Nothing's stock images for your version (this restores `dtbo` and
+`boot`, and formats `userdata`).

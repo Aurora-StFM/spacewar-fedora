@@ -1,0 +1,10 @@
+# Services the Nothing Phone (1) needs: modem/Wi-Fi remote file systems,
+# DSP file servers, A/B slot bookkeeping and USB networking for SSH.
+enable rmtfs.service
+enable tqftpserv.service
+enable hexagonrpcd-adsp-sensorspd.service
+enable qbootctl-mark-successful.service
+enable nothing-spacewar-usb-gadget.service
+enable sshd.service
+enable ModemManager.service
+enable NetworkManager.service

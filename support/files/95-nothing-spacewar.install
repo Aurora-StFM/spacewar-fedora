@@ -1,0 +1,112 @@
+#!/usr/bin/bash
+# kernel-install plugin for the Nothing Phone (1).
+#
+# The phone's bootloader (ABL) has no GRUB and no boot entries: it loads one
+# Android boot image from the boot partition of the active A/B slot. For
+# kernels that ship the Nothing Phone (1) device tree this plugin:
+#   - takes the initramfs 50-dracut.install built (or runs dracut itself)
+#   - packs kernel + initramfs + device tree into
+#     /boot/nothing-spacewar/boot-<version>.img
+#   - when running on the phone, writes that image to the active boot slot,
+#     so the kernel dnf just installed is the one that boots next
+# Kernels without the device tree are left alone.
+#
+# Settings: /usr/lib/nothing-spacewar/boot.conf, overridden by
+# /etc/nothing-spacewar/boot.conf (FLASH_ON_UPDATE=no keeps the boot
+# partition untouched; KERNEL_CMDLINE replaces the command line).
+
+COMMAND="$1"
+KERNEL_VERSION="$2"
+KERNEL_IMAGE="${4:-}"
+
+ROOT="${SPACEWAR_TEST_ROOT:-}"
+MODDIR="$ROOT/usr/lib/modules/$KERNEL_VERSION"
+OUTDIR="$ROOT/boot/nothing-spacewar"
+DTB="$MODDIR/dtb/qcom/sm7325-nothing-spacewar.dtb"
+
+log()  { [ "${KERNEL_INSTALL_VERBOSE:-0}" -gt 0 ] && echo "nothing-spacewar: $*"; return 0; }
+warn() { echo "nothing-spacewar: $*" >&2; }
+
+# shellcheck disable=SC1091
+[ -r "$ROOT/usr/lib/nothing-spacewar/boot.conf" ] && . "$ROOT/usr/lib/nothing-spacewar/boot.conf"
+# shellcheck disable=SC1091
+[ -r "$ROOT/etc/nothing-spacewar/boot.conf" ] && . "$ROOT/etc/nothing-spacewar/boot.conf"
+: "${FLASH_ON_UPDATE:=yes}"
+: "${KERNEL_CMDLINE:=root=PARTLABEL=userdata rootfstype=ext4 rw rootwait console=tty0}"
+
+on_spacewar() {
+    [ -z "$ROOT" ] || return 1
+    command -v systemd-detect-virt >/dev/null && systemd-detect-virt -q --chroot && return 1
+    grep -qz 'nothing,spacewar' /proc/device-tree/compatible 2>/dev/null
+}
+
+case "$COMMAND" in
+    add)
+        [ -f "$DTB" ] || { log "no Nothing Phone (1) DTB in $MODDIR, skipping"; exit 0; }
+        [ -n "$KERNEL_IMAGE" ] || KERNEL_IMAGE="$MODDIR/vmlinuz"
+        mkdir -p "$OUTDIR"
+        chmod 0700 "$OUTDIR"
+
+        initrd="$OUTDIR/initramfs-$KERNEL_VERSION.img"
+        if [ -n "${KERNEL_INSTALL_STAGING_AREA:-}" ] && [ -s "$KERNEL_INSTALL_STAGING_AREA/initrd" ]; then
+            cp -f "$KERNEL_INSTALL_STAGING_AREA/initrd" "$initrd"
+        elif [ -s "$ROOT/boot/initramfs-$KERNEL_VERSION.img" ]; then
+            cp -f "$ROOT/boot/initramfs-$KERNEL_VERSION.img" "$initrd"
+        else
+            log "building initramfs"
+            dracut -q --force --kver "$KERNEL_VERSION" "$initrd" || { warn "dracut failed"; exit 1; }
+        fi
+        chmod 0600 "$initrd"
+
+        img="$OUTDIR/boot-$KERNEL_VERSION.img"
+        "$ROOT/usr/libexec/nothing-spacewar/spacewar-mkbootimg" \
+            --kernel "$KERNEL_IMAGE" --append-dtb "$DTB" --dtb "$DTB" \
+            --ramdisk "$initrd" --cmdline "$KERNEL_CMDLINE" \
+            --header-version "${BOOTIMG_HEADER_VERSION:-2}" \
+            --pagesize "${BOOTIMG_PAGESIZE:-4096}" \
+            --base "${BOOTIMG_BASE:-0x00000000}" \
+            --kernel-offset "${BOOTIMG_KERNEL_OFFSET:-0x00008000}" \
+            --ramdisk-offset "${BOOTIMG_RAMDISK_OFFSET:-0x01000000}" \
+            --second-offset "${BOOTIMG_SECOND_OFFSET:-0x00000000}" \
+            --tags-offset "${BOOTIMG_TAGS_OFFSET:-0x00000100}" \
+            --dtb-offset "${BOOTIMG_DTB_OFFSET:-0x01f00000}" \
+            -o "$img.new" || { warn "building the boot image failed"; rm -f "$img.new"; exit 1; }
+        chmod 0600 "$img.new"
+        mv -f "$img.new" "$img"
+        log "wrote $img"
+
+        if [ "$FLASH_ON_UPDATE" != "yes" ]; then
+            log "FLASH_ON_UPDATE=$FLASH_ON_UPDATE, not writing the boot partition"
+            exit 0
+        fi
+        if ! on_spacewar; then
+            log "not running on a Nothing Phone (1), not writing the boot partition"
+            exit 0
+        fi
+
+        suffix="$(tr ' ' '\n' < /proc/cmdline | sed -n 's/^androidboot\.slot_suffix=//p' | tail -n1)"
+        case "$suffix" in
+            _a|_b) ;;
+            *) warn "no androidboot.slot_suffix on the kernel command line; flash $img yourself"; exit 0 ;;
+        esac
+        part="/dev/disk/by-partlabel/boot$suffix"
+        [ -b "$part" ] || { warn "$part not found; flash $img yourself"; exit 0; }
+        psize="$(blockdev --getsize64 "$part")"
+        isize="$(stat -c %s "$img")"
+        if [ "$isize" -gt "$psize" ]; then
+            warn "$img is $isize bytes, boot$suffix holds only $psize; not flashing"
+            exit 1
+        fi
+        dd if="$img" of="$part" bs=1M conv=fsync status=none || { warn "writing $part failed"; exit 1; }
+        echo "$KERNEL_VERSION" > "$OUTDIR/flashed"
+        echo "nothing-spacewar: kernel $KERNEL_VERSION written to boot$suffix"
+        ;;
+    remove)
+        rm -f "$OUTDIR/boot-$KERNEL_VERSION.img" "$OUTDIR/initramfs-$KERNEL_VERSION.img"
+        if [ "$(cat "$OUTDIR/flashed" 2>/dev/null)" = "$KERNEL_VERSION" ]; then
+            warn "kernel $KERNEL_VERSION is the one in the boot partition; reinstall another kernel (dnf reinstall kernel-spacewar) before rebooting"
+        fi
+        ;;
+esac
+
+exit 0

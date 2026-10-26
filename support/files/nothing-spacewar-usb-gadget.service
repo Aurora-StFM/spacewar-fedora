@@ -1,0 +1,14 @@
+[Unit]
+Description=USB networking gadget (Nothing Phone 1)
+ConditionPathIsDirectory=/sys/class/udc
+After=systemd-modules-load.service
+Before=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/nothing-spacewar/nothing-spacewar-usb-gadget start
+ExecStop=/usr/libexec/nothing-spacewar/nothing-spacewar-usb-gadget stop
+
+[Install]
+WantedBy=multi-user.target

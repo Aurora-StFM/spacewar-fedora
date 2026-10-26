@@ -1,0 +1,2 @@
+# Let hexagonrpcd (user and group fastrpc) open the FastRPC device nodes.
+SUBSYSTEM=="misc", KERNEL=="fastrpc-*", GROUP="fastrpc", MODE="0660"

@@ -1,0 +1,5 @@
+# Nothing Phone (1)
+
+# Accelerometer mount matrix for iio-sensor-proxy with the libssc backend
+# (from Nura's device-nothing-spacewar).
+SUBSYSTEM=="misc", KERNEL=="fastrpc-*", ENV{ACCEL_MOUNT_MATRIX}+="-1, 0, 0; 0, -1, 0; 0, 0, -1"

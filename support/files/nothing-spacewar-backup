@@ -1,0 +1,28 @@
+#!/usr/bin/bash
+# Copy the Nothing Phone (1) partitions that can't be re-downloaded from a
+# stock Nothing OS package into one directory, with checksums.
+#
+#   sudo nothing-spacewar-backup [DIR]     default: /var/lib/nothing-spacewar/backup-<date>
+#
+# persist holds the Wi-Fi/Bluetooth MAC addresses and sensor calibration;
+# modemst1/modemst2/fsg/fsc hold the modem's per-device data (IMEI and
+# calibration). Losing them can't be fixed by reflashing. Copy the result off
+# the phone, e.g.: scp -r USER@172.16.42.1:/var/lib/nothing-spacewar/backup-* .
+set -euo pipefail
+
+[ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
+dest="${1:-/var/lib/nothing-spacewar/backup-$(date +%Y%m%d-%H%M%S)}"
+mkdir -p "$dest"
+chmod 0700 "$dest"
+
+for name in persist modemst1 modemst2 fsg fsc devinfo boot_a boot_b dtbo_a dtbo_b vbmeta_a vbmeta_b; do
+    dev="/dev/disk/by-partlabel/$name"
+    if [ -b "$dev" ]; then
+        dd if="$dev" of="$dest/$name.img" bs=1M status=none
+        echo "saved $name ($(stat -c %s "$dest/$name.img") bytes)"
+    else
+        echo "skipped $name (no such partition)"
+    fi
+done
+(cd "$dest" && sha256sum ./*.img > SHA256SUMS)
+echo "backup in $dest"

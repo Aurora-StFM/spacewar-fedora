@@ -1,0 +1,17 @@
+# Nothing Phone (1): the initramfs goes into the Android boot image, so keep
+# it generic (it is also built inside the image builder's chroot) but small.
+hostonly="no"
+# A rescue image would need its own boot image; there is only one boot slot.
+dracut_rescue_image="no"
+compress="zstd"
+# Display, touchscreen and the USB-C mux early, so the screen works for the
+# emergency shell and an unlock prompt. Same list as Nura's modules-initfs.
+add_drivers+=" msm panel-visionox-rm692e5 spi-geni-qcom fts_tp fsa4480 "
+# GPU firmware msm loads at probe. The zap shader path comes from the device
+# tree, so dracut can't find it by itself. Fedora compresses linux-firmware
+# files, hence the alternatives.
+install_optional_items+=" /usr/lib/firmware/qcom/sm7325/nothing/spacewar/a660_zap.mbn "
+install_optional_items+=" /usr/lib/firmware/qcom/a660_sqe.fw /usr/lib/firmware/qcom/a660_sqe.fw.xz /usr/lib/firmware/qcom/a660_sqe.fw.zst "
+install_optional_items+=" /usr/lib/firmware/qcom/a660_gmu.bin /usr/lib/firmware/qcom/a660_gmu.bin.xz /usr/lib/firmware/qcom/a660_gmu.bin.zst "
+# Bulky and pointless on a phone without a separate /boot.
+omit_dracutmodules+=" plymouth "

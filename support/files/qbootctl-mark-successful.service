@@ -1,0 +1,12 @@
+[Unit]
+Description=Mark the current A/B boot slot as successful (Nothing Phone 1)
+# Without this the bootloader counts every boot as a failed attempt and can
+# eventually mark the slot unbootable.
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/qbootctl -m
+
+[Install]
+WantedBy=multi-user.target
