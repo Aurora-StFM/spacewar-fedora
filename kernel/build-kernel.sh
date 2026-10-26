@@ -61,7 +61,8 @@ mkdir -p "$BUILD"
 # Built in (y) where the system needs it before modules load, either for the rest.
 for opt in SECURITY_SELINUX=y EXT4_FS=y FW_LOADER_COMPRESS_XZ=y \
            FW_LOADER_COMPRESS_ZSTD=y USB_CONFIGFS=y USB_CONFIGFS_NCM=y \
-           SCSI_UFS_QCOM DRM_MSM QCOM_PD_MAPPER ATH11K_AHB QCOM_FASTRPC; do
+           SCSI_UFS_QCOM DRM_MSM QCOM_PD_MAPPER ATH11K_AHB QCOM_FASTRPC \
+           INPUT_QCOM_HV_HAPTICS; do
     case "$opt" in
         *=*) pat="^CONFIG_${opt}\$" ;;
         *)   pat="^CONFIG_${opt}=[ym]\$" ;;

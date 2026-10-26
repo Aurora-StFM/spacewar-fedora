@@ -37,7 +37,7 @@ these is only to package them the Fedora way.
 - Nura's UCM package depends on `dummystreamhack`; find out what it works
   around before the first audio test.
 
-## Haptics: broken
+## Haptics: driver written, untested on hardware
 
 - The vibration motor is driven by the haptics block in the PM8350B PMIC
   (`qcom,hv-haptics@f000`, registers 0xf000/0xf100/0xf200, "fifo-empty"
@@ -48,10 +48,32 @@ these is only to package them the Fedora way.
   `qcom,Vrms_mv = 1270`, `qcom,lra-period-us = 5880`, closed-loop brake, sine
   drive; click effects at 3600 mV.
 - The Nura wiki lists it as `qcom,pmi632-vib` with "custom modes required";
-  mainline's `pm8xxx-vibrator` handles the simple SPMI vibrators.
-- Plan: a small driver (or pm8xxx-vibrator extension) for one mode only:
-  constant LRA drive at a set voltage, exposed as an FF_RUMBLE input device,
-  which is all feedbackd needs. Effects and the FIFO streaming mode can wait.
+  mainline's `pm8xxx-vibrator` handles the older, simpler vibrator block,
+  which has a different register layout, so it can't drive this one.
+- `kernel/patches/0001-0003` add a new driver, `qcom-hv-haptics`
+  (`qcom,pm8350b-haptics`, ~350 lines). It only uses "direct play": a
+  constant amplitude with auto-resonance, exposed as an FF_RUMBLE input
+  device, which is all feedbackd needs. It compiles cleanly (W=1), passes
+  checkpatch, and the device tree builds.
+- Peak voltage starts at 3.6 V in the device tree (downstream uses 9.15 V
+  for continuous vibration). Raise it once the motor is confirmed working.
+- Left out for now: brake (the motor coasts to a stop), the FIFO and
+  pattern modes, closed-loop calibration, and boost control through the
+  PMIC's SDAM/PBS, which downstream uses on this board.
+
+### Testing it
+
+```bash
+dmesg | grep -i haptics                   # probe errors, if any
+grep -l qcom-hv-haptics /sys/class/input/*/device/name   # find the eventN
+sudo dnf install linuxconsoletools
+sudo fftest /dev/input/eventN             # pick the rumble effect
+```
+
+If the probe succeeds but nothing moves, the likely missing piece is the
+boost: downstream asks the PMIC's PBS sequencer to turn it on by writing to
+SDAM 46 (`PBS_ARG` 0x42 = 1, then `PBS_TRIG_SET` 0xe5 = 1). That would be the
+next patch.
 
 ## Wi-Fi: partial
 

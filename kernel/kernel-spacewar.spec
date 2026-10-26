@@ -85,3 +85,5 @@ done
 * Mon Oct 26 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - %{kversion}-%{krelease}
 - First build: sc7280-mainline v7.2.9-sc7280 with Nura's config and a
   Fedora fragment (SELinux, compressed firmware, USB gadget networking)
+- Vibration motor: qcom-hv-haptics driver for the PM8350B haptics block
+  (direct play, FF_RUMBLE), enabled in the device tree at 3.6 V

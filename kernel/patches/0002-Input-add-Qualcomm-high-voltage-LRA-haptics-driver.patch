@@ -1,0 +1,413 @@
+From f053b4c06f5cb53295641dd545d6a797344cd4d8 Mon Sep 17 00:00:00 2001
+From: Aurora-StFM <scp.173.x@gmail.com>
+Date: Mon, 26 Oct 2026 22:17:26 +0100
+Subject: [PATCH 2/3] Input: add Qualcomm high-voltage LRA haptics driver
+
+Add a driver for the haptics block in Qualcomm PMICs such as PM8350B
+(HAP520). The hardware can stream waveforms from a FIFO and play stored
+patterns; this driver only uses "direct play", a constant amplitude with
+auto-resonance, and exposes it as an FF_RUMBLE memless input device.
+That is enough for phone vibration (feedbackd).
+
+The register layout and start-up sequence follow Qualcomm's downstream
+qcom-hv-haptics driver.
+
+Co-developed-by: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Aurora-StFM <scp.173.x@gmail.com>
+---
+ drivers/input/misc/Kconfig           |  13 +
+ drivers/input/misc/Makefile          |   1 +
+ drivers/input/misc/qcom-hv-haptics.c | 345 +++++++++++++++++++++++++++
+ 3 files changed, 359 insertions(+)
+ create mode 100644 drivers/input/misc/qcom-hv-haptics.c
+
+diff --git a/drivers/input/misc/Kconfig b/drivers/input/misc/Kconfig
+index 1f6c57dba..5180d5337 100644
+--- a/drivers/input/misc/Kconfig
++++ b/drivers/input/misc/Kconfig
+@@ -213,6 +213,19 @@ config INPUT_PM8941_PWRKEY
+ 	  To compile this driver as a module, choose M here: the module
+ 	  will be called pm8941-pwrkey.
+ 
++config INPUT_QCOM_HV_HAPTICS
++	tristate "Qualcomm high-voltage LRA haptics support"
++	depends on MFD_SPMI_PMIC || COMPILE_TEST
++	depends on OF
++	select INPUT_FF_MEMLESS
++	help
++	  Say Y here to enable the haptics block of Qualcomm PMICs such
++	  as PM8350B, which drives a linear resonant actuator (vibration
++	  motor). It is exposed as a force-feedback rumble device.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called qcom-hv-haptics.
++
+ config INPUT_PM8XXX_VIBRATOR
+ 	tristate "Qualcomm PM8XXX vibrator support"
+ 	depends on MFD_PM8XXX || MFD_SPMI_PMIC
+diff --git a/drivers/input/misc/Makefile b/drivers/input/misc/Makefile
+index 2281d6803..6f332aa8d 100644
+--- a/drivers/input/misc/Makefile
++++ b/drivers/input/misc/Makefile
+@@ -65,6 +65,7 @@ obj-$(CONFIG_INPUT_PCSPKR)		+= pcspkr.o
+ obj-$(CONFIG_INPUT_PF1550_ONKEY)	+= pf1550-onkey.o
+ obj-$(CONFIG_INPUT_PM8941_PWRKEY)	+= pm8941-pwrkey.o
+ obj-$(CONFIG_INPUT_PM8XXX_VIBRATOR)	+= pm8xxx-vibrator.o
++obj-$(CONFIG_INPUT_QCOM_HV_HAPTICS)	+= qcom-hv-haptics.o
+ obj-$(CONFIG_INPUT_PMIC8XXX_PWRKEY)	+= pmic8xxx-pwrkey.o
+ obj-$(CONFIG_INPUT_POWERMATE)		+= powermate.o
+ obj-$(CONFIG_INPUT_PWM_BEEPER)		+= pwm-beeper.o
+diff --git a/drivers/input/misc/qcom-hv-haptics.c b/drivers/input/misc/qcom-hv-haptics.c
+new file mode 100644
+index 000000000..46fbd3c51
+--- /dev/null
++++ b/drivers/input/misc/qcom-hv-haptics.c
+@@ -0,0 +1,345 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Qualcomm high-voltage LRA haptics (HAP520 in PM8350B and relatives).
++ *
++ * The haptics block drives a linear resonant actuator (LRA) from its own
++ * boost converter. It can stream waveforms from a FIFO, play stored patterns
++ * or drive a constant amplitude ("direct play"). This driver only uses
++ * direct play with auto-resonance, which is enough for an FF_RUMBLE
++ * vibrator: start, stop and strength.
++ *
++ * Register layout and the start-up sequence follow Qualcomm's downstream
++ * qcom-hv-haptics driver.
++ */
++
++#include <linux/bitfield.h>
++#include <linux/delay.h>
++#include <linux/input.h>
++#include <linux/kernel.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/property.h>
++#include <linux/regmap.h>
++#include <linux/workqueue.h>
++
++/* HAPTICS_CFG module */
++#define HAP_CFG_REVISION2		0x01
++#define HAP_CFG_FAULT_STATUS		0x0c
++#define HAP_CFG_EN_CTL			0x46
++#define  HAP_CFG_EN_CTL_EN		BIT(7)
++#define HAP_CFG_VMAX			0x48
++#define  HAP_CFG_VMAX_STEP_MV		50
++#define HAP_CFG_DRV_WF_SEL		0x49
++#define  HAP_CFG_DRV_WF_FMT		BIT(4)
++#define  HAP_CFG_DRV_WF_SEL_MASK	GENMASK(1, 0)
++#define  HAP_CFG_DRV_WF_SINE		1
++#define HAP_CFG_SPMI_PLAY		0x4c
++#define  HAP_CFG_SPMI_PLAY_EN		BIT(7)
++#define  HAP_CFG_SPMI_PLAY_SRC_MASK	GENMASK(2, 0)
++#define  HAP_CFG_PAT_SRC_DIRECT_PLAY	1
++#define HAP_CFG_TLRA_OL_HIGH		0x5c
++#define  HAP_CFG_TLRA_OL_MSB_MASK	GENMASK(3, 0)
++#define HAP_CFG_TLRA_OL_LOW		0x5d
++#define  HAP_CFG_TLRA_STEP_US		5
++#define  HAP_CFG_TLRA_MAX_US		20475
++#define HAP_CFG_AUTORES_CFG		0x63
++#define  HAP_CFG_AUTORES_EN		BIT(7)
++#define HAP_CFG_FAULT_CLR		0x66
++#define  HAP_CFG_FAULT_CLR_ALL		GENMASK(2, 0)
++#define HAP_CFG_CAL_EN			0x72
++#define  HAP_CFG_CAL_RC_CLK_MASK	GENMASK(3, 2)
++#define  HAP_CFG_CAL_RC_CLK_AUTO	1
++
++/* HAPTICS_PATTERN module */
++#define HAP_PTN_REVISION2		0x01
++#define HAP_PTN_DIRECT_PLAY		0x26
++
++/* HAPTICS boost module */
++#define HAP_BST_REVISION1		0x00
++#define HAP_BST_STATUS4			0x0b
++#define  HAP_BST_STATUS4_DTEST1		BIT(0)
++#define HAP_BST_VREG_EN			0x46
++#define  HAP_BST_VREG_EN_BIT		BIT(7)
++#define HAP_BST_V0P0_CLAMP		0xf1
++#define HAP_BST_V0P1_CLAMP		0x70
++#define  HAP_BST_CLAMP_5V		BIT(0)
++
++#define HAP_MAX_VMAX_MV			11000
++#define HAP_CLAMPED_VMAX_MV		5000
++/* With automatic RC clock calibration the period counts run 2.4% slow. */
++#define HAP_AUTO_CAL_SCALE_NUM		1024
++#define HAP_AUTO_CAL_SCALE_DEN		1000
++
++struct qcom_hv_haptics {
++	struct device *dev;
++	struct regmap *regmap;
++	struct input_dev *input;
++	struct work_struct work;
++	u32 cfg_base;
++	u32 ptn_base;
++	u32 bst_base;
++	u32 vmax_mv;
++	u32 lra_period_us;
++	u16 magnitude;
++	bool playing;
++};
++
++static int hap_write(struct qcom_hv_haptics *hap, u32 base, u32 reg, u8 val)
++{
++	return regmap_write(hap->regmap, base + reg, val);
++}
++
++static int hap_update(struct qcom_hv_haptics *hap, u32 base, u32 reg,
++		      u8 mask, u8 val)
++{
++	return regmap_update_bits(hap->regmap, base + reg, mask, val);
++}
++
++/*
++ * The boost converter must not be mid power transition when playback
++ * starts. Wait up to ~20 ms for it, as the downstream driver does; if it
++ * stays busy (it is still on from the previous effect) play anyway.
++ */
++static void hap_wait_boost_ready(struct qcom_hv_haptics *hap)
++{
++	unsigned int en, sts;
++	int i;
++
++	for (i = 0; i < 100; i++) {
++		if (regmap_read(hap->regmap, hap->bst_base + HAP_BST_VREG_EN, &en) ||
++		    regmap_read(hap->regmap, hap->bst_base + HAP_BST_STATUS4, &sts))
++			return;
++		if (!(en & HAP_BST_VREG_EN_BIT) && !(sts & HAP_BST_STATUS4_DTEST1))
++			return;
++		usleep_range(200, 250);
++	}
++	dev_dbg(hap->dev, "boost still busy, starting anyway\n");
++}
++
++static int hap_play(struct qcom_hv_haptics *hap, u8 amplitude)
++{
++	int ret;
++
++	if (!amplitude) {
++		hap->playing = false;
++		return hap_write(hap, hap->cfg_base, HAP_CFG_SPMI_PLAY,
++				 HAP_CFG_PAT_SRC_DIRECT_PLAY);
++	}
++
++	if (!hap->playing)
++		hap_wait_boost_ready(hap);
++
++	ret = hap_write(hap, hap->cfg_base, HAP_CFG_FAULT_CLR,
++			HAP_CFG_FAULT_CLR_ALL);
++	if (ret)
++		return ret;
++
++	ret = hap_write(hap, hap->ptn_base, HAP_PTN_DIRECT_PLAY, amplitude);
++	if (ret)
++		return ret;
++
++	ret = hap_write(hap, hap->cfg_base, HAP_CFG_SPMI_PLAY,
++			HAP_CFG_SPMI_PLAY_EN | HAP_CFG_PAT_SRC_DIRECT_PLAY);
++	if (!ret)
++		hap->playing = true;
++	return ret;
++}
++
++static void hap_work(struct work_struct *work)
++{
++	struct qcom_hv_haptics *hap = container_of(work, struct qcom_hv_haptics, work);
++	int ret;
++
++	ret = hap_play(hap, hap->magnitude >> 8);
++	if (ret)
++		dev_err(hap->dev, "failed to %s playback: %d\n",
++			hap->magnitude ? "start" : "stop", ret);
++}
++
++static int hap_play_effect(struct input_dev *dev, void *data,
++			   struct ff_effect *effect)
++{
++	struct qcom_hv_haptics *hap = input_get_drvdata(dev);
++	u16 strong = effect->u.rumble.strong_magnitude;
++	u16 weak = effect->u.rumble.weak_magnitude;
++
++	hap->magnitude = max_t(u16, strong, weak / 2);
++	schedule_work(&hap->work);
++	return 0;
++}
++
++static void hap_close(struct input_dev *dev)
++{
++	struct qcom_hv_haptics *hap = input_get_drvdata(dev);
++
++	cancel_work_sync(&hap->work);
++	hap_play(hap, 0);
++}
++
++static int hap_hw_init(struct qcom_hv_haptics *hap)
++{
++	unsigned int rev[2], clamp, cfg_rev, ptn_rev;
++	u32 vmax = hap->vmax_mv, tlra;
++	u8 clamp_reg;
++	int ret;
++
++	ret = regmap_read(hap->regmap, hap->cfg_base + HAP_CFG_REVISION2, &cfg_rev);
++	if (!ret)
++		ret = regmap_read(hap->regmap, hap->ptn_base + HAP_PTN_REVISION2, &ptn_rev);
++	if (!ret)
++		ret = regmap_read(hap->regmap, hap->bst_base + HAP_BST_REVISION1, &rev[0]);
++	if (!ret)
++		ret = regmap_read(hap->regmap, hap->bst_base + HAP_BST_REVISION1 + 1, &rev[1]);
++	if (ret)
++		return ret;
++	dev_dbg(hap->dev, "revisions: cfg %#x, ptn %#x, boost %#x\n",
++		cfg_rev, ptn_rev, (rev[1] << 8) | rev[0]);
++
++	/* Some boards limit the boost output to 5 V. */
++	clamp_reg = ((rev[1] << 8) | rev[0]) == 0 ? HAP_BST_V0P0_CLAMP
++						  : HAP_BST_V0P1_CLAMP;
++	ret = regmap_read(hap->regmap, hap->bst_base + clamp_reg, &clamp);
++	if (ret)
++		return ret;
++	if ((clamp & HAP_BST_CLAMP_5V) && vmax > HAP_CLAMPED_VMAX_MV) {
++		dev_info(hap->dev, "boost clamped to 5 V, limiting vmax\n");
++		vmax = HAP_CLAMPED_VMAX_MV;
++	}
++
++	ret = hap_write(hap, hap->cfg_base, HAP_CFG_VMAX,
++			vmax / HAP_CFG_VMAX_STEP_MV);
++	if (ret)
++		return ret;
++
++	/* Sine drive, two's complement sample format. */
++	ret = hap_update(hap, hap->cfg_base, HAP_CFG_DRV_WF_SEL,
++			 HAP_CFG_DRV_WF_SEL_MASK | HAP_CFG_DRV_WF_FMT,
++			 HAP_CFG_DRV_WF_SINE);
++	if (ret)
++		return ret;
++
++	ret = hap_update(hap, hap->cfg_base, HAP_CFG_CAL_EN,
++			 HAP_CFG_CAL_RC_CLK_MASK,
++			 FIELD_PREP(HAP_CFG_CAL_RC_CLK_MASK, HAP_CFG_CAL_RC_CLK_AUTO));
++	if (ret)
++		return ret;
++
++	/* Open-loop LRA period, the starting point for auto-resonance. */
++	tlra = div_u64((u64)hap->lra_period_us * HAP_AUTO_CAL_SCALE_NUM,
++		       HAP_AUTO_CAL_SCALE_DEN) / HAP_CFG_TLRA_STEP_US;
++	ret = hap_write(hap, hap->cfg_base, HAP_CFG_TLRA_OL_HIGH,
++			(tlra >> 8) & HAP_CFG_TLRA_OL_MSB_MASK);
++	if (!ret)
++		ret = hap_write(hap, hap->cfg_base, HAP_CFG_TLRA_OL_LOW, tlra & 0xff);
++	if (ret)
++		return ret;
++
++	ret = hap_update(hap, hap->cfg_base, HAP_CFG_AUTORES_CFG,
++			 HAP_CFG_AUTORES_EN, HAP_CFG_AUTORES_EN);
++	if (ret)
++		return ret;
++
++	/* Select direct play with playback off, then enable the module. */
++	ret = hap_write(hap, hap->cfg_base, HAP_CFG_SPMI_PLAY,
++			HAP_CFG_PAT_SRC_DIRECT_PLAY);
++	if (ret)
++		return ret;
++
++	return hap_update(hap, hap->cfg_base, HAP_CFG_EN_CTL,
++			  HAP_CFG_EN_CTL_EN, HAP_CFG_EN_CTL_EN);
++}
++
++static int qcom_hv_haptics_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct qcom_hv_haptics *hap;
++	u32 bases[3];
++	int ret;
++
++	hap = devm_kzalloc(dev, sizeof(*hap), GFP_KERNEL);
++	if (!hap)
++		return -ENOMEM;
++	hap->dev = dev;
++
++	hap->regmap = dev_get_regmap(dev->parent, NULL);
++	if (!hap->regmap)
++		return -ENODEV;
++
++	ret = device_property_read_u32_array(dev, "reg", bases, ARRAY_SIZE(bases));
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to read reg\n");
++	hap->cfg_base = bases[0];
++	hap->ptn_base = bases[1];
++	hap->bst_base = bases[2];
++
++	ret = device_property_read_u32(dev, "qcom,vmax-microvolt", &hap->vmax_mv);
++	if (ret)
++		return dev_err_probe(dev, ret, "qcom,vmax-microvolt missing\n");
++	hap->vmax_mv /= 1000;
++	if (!hap->vmax_mv || hap->vmax_mv > HAP_MAX_VMAX_MV)
++		return dev_err_probe(dev, -EINVAL, "invalid vmax %u mV\n", hap->vmax_mv);
++
++	ret = device_property_read_u32(dev, "qcom,lra-period-us", &hap->lra_period_us);
++	if (ret)
++		return dev_err_probe(dev, ret, "qcom,lra-period-us missing\n");
++	if (!hap->lra_period_us || hap->lra_period_us > HAP_CFG_TLRA_MAX_US)
++		return dev_err_probe(dev, -EINVAL, "invalid LRA period %u us\n",
++				     hap->lra_period_us);
++
++	ret = hap_hw_init(hap);
++	if (ret)
++		return dev_err_probe(dev, ret, "hardware init failed\n");
++
++	INIT_WORK(&hap->work, hap_work);
++
++	hap->input = devm_input_allocate_device(dev);
++	if (!hap->input)
++		return -ENOMEM;
++	hap->input->name = "qcom-hv-haptics";
++	hap->input->id.version = 1;
++	hap->input->close = hap_close;
++	input_set_drvdata(hap->input, hap);
++	input_set_capability(hap->input, EV_FF, FF_RUMBLE);
++
++	ret = input_ff_create_memless(hap->input, NULL, hap_play_effect);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to create FF device\n");
++
++	ret = input_register_device(hap->input);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to register input device\n");
++
++	platform_set_drvdata(pdev, hap);
++	return 0;
++}
++
++static int qcom_hv_haptics_suspend(struct device *dev)
++{
++	struct qcom_hv_haptics *hap = dev_get_drvdata(dev);
++
++	cancel_work_sync(&hap->work);
++	return hap_play(hap, 0);
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(qcom_hv_haptics_pm_ops, qcom_hv_haptics_suspend, NULL);
++
++static const struct of_device_id qcom_hv_haptics_of_match[] = {
++	{ .compatible = "qcom,pm8350b-haptics" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, qcom_hv_haptics_of_match);
++
++static struct platform_driver qcom_hv_haptics_driver = {
++	.probe = qcom_hv_haptics_probe,
++	.driver = {
++		.name = "qcom-hv-haptics",
++		.of_match_table = qcom_hv_haptics_of_match,
++		.pm = pm_sleep_ptr(&qcom_hv_haptics_pm_ops),
++	},
++};
++module_platform_driver(qcom_hv_haptics_driver);
++
++MODULE_DESCRIPTION("Qualcomm high-voltage LRA haptics driver");
++MODULE_LICENSE("GPL");
+-- 
+2.43.0
+

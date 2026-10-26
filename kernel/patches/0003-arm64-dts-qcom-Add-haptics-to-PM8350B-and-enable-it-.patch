@@ -1,0 +1,62 @@
+From cbdb9978b702bb5c1534d8b90d257f457f4e0d13 Mon Sep 17 00:00:00 2001
+From: Aurora-StFM <scp.173.x@gmail.com>
+Date: Mon, 26 Oct 2026 22:17:26 +0100
+Subject: [PATCH 3/3] arm64: dts: qcom: Add haptics to PM8350B and enable it on
+ Nothing Phone (1)
+
+Describe the PM8350B haptics block and enable it on the Nothing Phone (1)
+with the LRA period from Nothing's downstream device tree. The peak
+voltage starts at 3.6 V instead of downstream's 9.15 V until the motor
+has been tested.
+
+Co-developed-by: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Aurora-StFM <scp.173.x@gmail.com>
+---
+ arch/arm64/boot/dts/qcom/pm8350b.dtsi                |  8 ++++++++
+ arch/arm64/boot/dts/qcom/sm7325-nothing-spacewar.dts | 12 ++++++++++++
+ 2 files changed, 20 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/pm8350b.dtsi b/arch/arm64/boot/dts/qcom/pm8350b.dtsi
+index cf82f8a64..c05d6198c 100644
+--- a/arch/arm64/boot/dts/qcom/pm8350b.dtsi
++++ b/arch/arm64/boot/dts/qcom/pm8350b.dtsi
+@@ -53,5 +53,13 @@ pm8350b_gpios: gpio@8800 {
+ 			interrupt-controller;
+ 			#interrupt-cells = <2>;
+ 		};
++
++		pm8350b_haptics: haptics@f000 {
++			compatible = "qcom,pm8350b-haptics";
++			reg = <0xf000>, <0xf100>, <0xf200>;
++			interrupts = <0x3 0xf0 0x1 IRQ_TYPE_EDGE_RISING>;
++			interrupt-names = "fifo-empty";
++			status = "disabled";
++		};
+ 	};
+ };
+diff --git a/arch/arm64/boot/dts/qcom/sm7325-nothing-spacewar.dts b/arch/arm64/boot/dts/qcom/sm7325-nothing-spacewar.dts
+index 7a242f79d..49c100bcf 100644
+--- a/arch/arm64/boot/dts/qcom/sm7325-nothing-spacewar.dts
++++ b/arch/arm64/boot/dts/qcom/sm7325-nothing-spacewar.dts
+@@ -1137,6 +1137,18 @@ kypd_volp_n: kypd-volp-n-state {
+ 	};
+ };
+ 
++&pm8350b_haptics {
++	/*
++	 * Nothing's Android device tree uses Qualcomm's reference phone values
++	 * (yupik-qrd.dtsi): 9.15 V peak and a 5880 us (170 Hz) LRA period.
++	 * Start lower; raise towards 9150000 once vibration is confirmed.
++	 */
++	qcom,vmax-microvolt = <3600000>;
++	qcom,lra-period-us = <5880>;
++
++	status = "okay";
++};
++
+ &pm8350c_flash {
+ 	status = "okay";
+ 
+-- 
+2.43.0
+
