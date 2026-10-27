@@ -132,7 +132,7 @@ computer an address:
 ssh yourname@172.16.42.1
 sudo nothing-spacewar-backup
 exit
-scp -r 'yourname@172.16.42.1:/var/lib/nothing-spacewar/backup-*' .
+scp -r 'yourname@172.16.42.1:spacewar-backup-*' .
 ```
 
 Keep that backup somewhere safe.

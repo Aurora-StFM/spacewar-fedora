@@ -59,7 +59,10 @@ done
 BASE_PKGS=(
     @core glibc-langpack-en selinux-policy-targeted dracut
     NetworkManager NetworkManager-wifi NetworkManager-wwan ModemManager
-    openssh-server sudo zram-generator-defaults
+    openssh-server sudo zram-generator-defaults tar
+    # pam_systemd: without it logins get no logind session or seat, and the
+    # compositor can't take over the display (weak dependency, so not pulled in)
+    systemd-pam
     linux-firmware atheros-firmware qcom-firmware rmtfs tqftpserv
     pipewire wireplumber pipewire-pulseaudio pipewire-alsa alsa-ucm alsa-utils
     bluez iio-sensor-proxy python3 e2fsprogs

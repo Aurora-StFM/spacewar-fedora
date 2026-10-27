@@ -2,16 +2,19 @@
 # Copy the Nothing Phone (1) partitions that can't be re-downloaded from a
 # stock Nothing OS package into one directory, with checksums.
 #
-#   sudo nothing-spacewar-backup [DIR]     default: /var/lib/nothing-spacewar/backup-<date>
+#   sudo nothing-spacewar-backup [DIR]     default: ~/spacewar-backup-<date>
 #
 # persist holds the Wi-Fi/Bluetooth MAC addresses and sensor calibration;
 # modemst1/modemst2/fsg/fsc hold the modem's per-device data (IMEI and
-# calibration). Losing them can't be fixed by reflashing. Copy the result off
-# the phone, e.g.: scp -r USER@172.16.42.1:/var/lib/nothing-spacewar/backup-* .
+# calibration). Losing them can't be fixed by reflashing. The directory
+# belongs to the user who ran sudo, so it can be copied off directly:
+#   scp -r USER@172.16.42.1:spacewar-backup-* .
 set -euo pipefail
 
-[ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
-dest="${1:-/var/lib/nothing-spacewar/backup-$(date +%Y%m%d-%H%M%S)}"
+[ "$(id -u)" -eq 0 ] || { echo "run as root (sudo nothing-spacewar-backup)" >&2; exit 1; }
+owner="${SUDO_USER:-root}"
+home="$(getent passwd "$owner" | cut -d: -f6)"
+dest="${1:-${home:-/root}/spacewar-backup-$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$dest"
 chmod 0700 "$dest"
 
@@ -25,4 +28,5 @@ for name in persist modemst1 modemst2 fsg fsc devinfo boot_a boot_b dtbo_a dtbo_
     fi
 done
 (cd "$dest" && sha256sum ./*.img > SHA256SUMS)
-echo "backup in $dest"
+chown -R "$owner:" "$dest"
+echo "backup in $dest (owned by $owner)"
