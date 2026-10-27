@@ -63,7 +63,7 @@ fixes it.
   speakerphone, bottom microphone. Every control it sets exists in the
   kernel branch; the profile itself is untested. It starts
   `dummystreamhack@Rhw:NP1,6` / `@Thw:NP1,6` (user units from
-  nothing-spacewar-support), which hold the hostless voice streams open
+  the dummystreamhack package), which hold the hostless voice streams open
   while the call runs inside the DSP.
 - Not covered: wired headset during calls. q6voice-dai has voice routes to
   the MI2S ports but not to RX_CODEC_DMA_RX_0, the WCD9385 headphone path, so

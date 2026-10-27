@@ -1,5 +1,5 @@
 Name:           nothing-spacewar-support
-Version:        0.2
+Version:        0.3
 Release:        1
 Summary:        Fedora integration for the Nothing Phone (1)
 License:        MIT AND BSD-3-Clause
@@ -18,7 +18,6 @@ Source12:       nothing-spacewar-usb.nmconnection
 Source13:       nothing-spacewar-backup
 Source14:       60-nothing-spacewar-ucm.conf
 Source15:       ucm2.tar
-Source16:       dummystreamhack@.service
 
 Requires:       python3
 Requires:       dracut
@@ -71,7 +70,6 @@ install -Dm0755 %{SOURCE13} %{buildroot}/usr/bin/nothing-spacewar-backup
 install -Dm0644 %{SOURCE14} %{buildroot}/usr/lib/environment.d/60-nothing-spacewar-ucm.conf
 mkdir -p %{buildroot}/usr/share/nothing-spacewar/alsa %{buildroot}/etc/nothing-spacewar
 cp -a ucm2 %{buildroot}/usr/share/nothing-spacewar/alsa/
-install -Dm0644 %{SOURCE16} %{buildroot}/usr/lib/systemd/user/dummystreamhack@.service
 
 %post
 %systemd_post qbootctl-mark-successful.service nothing-spacewar-usb-gadget.service
@@ -93,10 +91,13 @@ install -Dm0644 %{SOURCE16} %{buildroot}/usr/lib/systemd/user/dummystreamhack@.s
 /usr/lib/environment.d/60-nothing-spacewar-ucm.conf
 /usr/bin/nothing-spacewar-backup
 /usr/share/nothing-spacewar
-/usr/lib/systemd/user/dummystreamhack@.service
 %dir /etc/nothing-spacewar
 
 %changelog
+* Tue Oct 27 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.3-1
+- Drop the dummystreamhack@ user unit; the dummystreamhack package ships
+  its own
+
 * Tue Oct 27 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.2-1
 - Voice Call UCM profile (earpiece, speakerphone, bottom microphone) and
   the dummystreamhack@ user unit it starts

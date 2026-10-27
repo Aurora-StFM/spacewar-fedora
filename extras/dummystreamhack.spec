@@ -12,13 +12,14 @@ Source0:        dummystreamhack-%{dshcommit}.tar.gz
 BuildRequires:  gcc
 BuildRequires:  meson
 BuildRequires:  pkgconfig(alsa)
+BuildRequires:  systemd-rpm-macros
 
 %description
 On Qualcomm phones the call audio flows between the modem and the audio DSP
 without passing through Linux, but the DSP routes are only active while an
 ALSA stream on the voice PCM is open. dummystreamhack opens such a "hostless"
 stream and keeps it open. The Voice Call UCM profile starts it through the
-dummystreamhack@ user unit (shipped by nothing-spacewar-support).
+dummystreamhack@ user unit included here.
 Commit %{dshcommit}.
 
 %prep
@@ -33,6 +34,7 @@ Commit %{dshcommit}.
 
 %files
 %{_bindir}/dummystreamhack
+%{_userunitdir}/dummystreamhack@.service
 
 %changelog
 * Tue Oct 27 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - %{dshversion}-1
