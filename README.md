@@ -109,8 +109,12 @@ fastboot boot out/boot.img               # try it once without writing the boot 
 ```
 
 The first boot relabels the filesystem for SELinux and reboots once. Because
-`fastboot boot` doesn't write anything, that reboot returns to Android's
-bootloader; run `fastboot boot out/boot.img` again.
+`fastboot boot` doesn't write anything, that reboot would start the Android
+kernel still in the boot partition, which can't use the Fedora userdata and
+may offer to format it. **Hold Volume Down as the phone reboots** so it lands
+in the bootloader instead, then run `fastboot boot out/boot.img` again. Never
+accept a "format data" or "factory reset" prompt from Android recovery here;
+it wipes the Fedora install.
 
 When it works, make it permanent:
 
