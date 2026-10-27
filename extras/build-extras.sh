@@ -8,6 +8,9 @@ set -euo pipefail
 
 require_cmds git curl mock rpmsign gpg sha256sum tar
 require_qemu_aarch64
+if in_container; then
+    warn "running inside a container: mock often can't create its mounts here. If it fails with mount, namespace or permission errors, run './build.sh extras' on the host instead (needs mock, rpm-sign, git and membership in the mock group)."
+fi
 
 MOCK_CFG="fedora-${FEDORA_RELEASE}-aarch64"
 SRC="$WORK_DIR/extras-src"

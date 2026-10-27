@@ -54,8 +54,17 @@ require_qemu_aarch64() {
     if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
         sudo systemctl restart systemd-binfmt 2>/dev/null || true
     fi
-    [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ] \
-        || die "qemu-aarch64 binfmt handler not registered (install qemu-user-static-aarch64)"
+    if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+        if in_container; then
+            die "qemu-aarch64 binfmt handler not registered. You are in a container (toolbox/distrobox); binfmt handlers come from the host. On the host run: sudo dnf install qemu-user-static-aarch64 (Atomic desktops: rpm-ostree install qemu-user-static-aarch64, then reboot)"
+        fi
+        die "qemu-aarch64 binfmt handler not registered (install qemu-user-static-aarch64)"
+    fi
+}
+
+# True inside toolbox, distrobox, podman or docker containers.
+in_container() {
+    [ -e /run/.toolboxenv ] || [ -e /run/.containerenv ] || [ -e /.dockerenv ]
 }
 
 # fetch_verified URL DEST ALGO SUM   (ALGO: sha256 or sha512)
