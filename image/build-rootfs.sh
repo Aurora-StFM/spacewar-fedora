@@ -65,7 +65,7 @@ BASE_PKGS=(
     systemd-pam
     linux-firmware atheros-firmware qcom-firmware rmtfs tqftpserv
     pipewire wireplumber pipewire-pulseaudio pipewire-alsa alsa-ucm alsa-utils
-    bluez iio-sensor-proxy python3 e2fsprogs
+    bluez iio-sensor-proxy upower python3 e2fsprogs
 )
 case "$UI" in
     phosh)
