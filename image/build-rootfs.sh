@@ -194,11 +194,15 @@ GREETD
         systemctl --root "$ROOT" enable greetd.service >/dev/null
         ;;
     plasma-mobile)
+        # SDDM's autologin wants the session file's exact name; take it from
+        # the image instead of guessing.
+        SESSION="$(find "$ROOT/usr/share/wayland-sessions" -maxdepth 1 -name 'plasma-mobile*.desktop' -printf '%f\n' | sort | head -n1)"
+        [ -n "$SESSION" ] || die "no Plasma Mobile session file in /usr/share/wayland-sessions"
         mkdir -p "$ROOT/etc/sddm.conf.d"
         cat > "$ROOT/etc/sddm.conf.d/50-nothing-spacewar.conf" <<EOF
 [Autologin]
 User=$USER_NAME
-Session=plasma-mobile
+Session=$SESSION
 EOF
         systemctl --root "$ROOT" enable sddm.service >/dev/null
         ;;
