@@ -5,8 +5,14 @@
 #   out/boot.img          Android boot image (for: fastboot boot / fastboot flash boot)
 #
 # Usage: sudo image/build-rootfs.sh --user NAME [--hostname NAME]
+#        sudo image/build-rootfs.sh --update
 # The password for NAME is asked for interactively. On a phone, digits make
 # the lock screen easiest to unlock.
+#
+# --update reuses the image folder from the last build (out/work/rootfs):
+# it installs the kit's packages again (newer versions replace older ones)
+# and repacks both images, without downloading Fedora again or touching the
+# user account. Use it after rebuilding a kit package.
 set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 
@@ -16,15 +22,19 @@ require_qemu_aarch64
 
 USER_NAME=""
 HOST_NAME="nothing-phone"
+UPDATE=no
 while [ $# -gt 0 ]; do
     case "$1" in
         --user) USER_NAME="$2"; shift 2 ;;
         --hostname) HOST_NAME="$2"; shift 2 ;;
+        --update) UPDATE=yes; shift ;;
         *) die "unknown argument: $1" ;;
     esac
 done
-[ -n "$USER_NAME" ] || die "pass --user NAME (the phone's user account)"
-[[ "$USER_NAME" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "invalid user name: $USER_NAME"
+if [ "$UPDATE" = no ]; then
+    [ -n "$USER_NAME" ] || die "pass --user NAME (the phone's user account), or --update"
+    [[ "$USER_NAME" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "invalid user name: $USER_NAME"
+fi
 
 shopt -s nullglob
 KERNEL_RPMS=("$RPM_DIR"/kernel-spacewar-*.aarch64.rpm)
@@ -39,7 +49,7 @@ shopt -u nullglob
     || die "build the packages first (./build.sh kernel firmware support extras)"
 [ -f "$SIGN_PUBKEY" ] || die "signing key $SIGN_PUBKEY missing"
 
-while :; do
+while [ "$UPDATE" = no ]; do
     read -rsp "Password for $USER_NAME on the phone: " PW1; echo
     read -rsp "Repeat it: " PW2; echo
     [ -n "$PW1" ] && [ "$PW1" = "$PW2" ] && break
@@ -110,6 +120,21 @@ umount_chroot() {
 }
 trap 'umount_chroot 2>/dev/null || true' EXIT
 
+if [ "$UPDATE" = yes ]; then
+msg "Updating the kit's packages in $ROOT"
+[ -f "$ROOT/etc/os-release" ] || die "no image in $ROOT to update; run a full build first (--user NAME)"
+umount_chroot
+mount_chroot
+rpm --root "$ROOT" --import "$SIGN_PUBKEY"
+# Newer package versions replace the installed ones; unchanged ones are kept.
+"${DNF[@]}" install "${RPMS[@]}"
+# Package scripts only apply presets on first install, so enable the kit's
+# services (including any new ones) here.
+mapfile -t KIT_UNITS < <(awk '$1 == "enable" { print $2 }' \
+    "$ROOT/usr/lib/systemd/system-preset/50-nothing-spacewar.preset")
+systemctl --root "$ROOT" preset "${KIT_UNITS[@]}" >/dev/null
+touch "$ROOT/.autorelabel"
+else
 msg "Creating root filesystem in $ROOT (Fedora $FEDORA_RELEASE, $UI)"
 [ -d "$ROOT" ] && umount_chroot
 rm -rf --one-file-system "$ROOT"
@@ -207,6 +232,8 @@ EOF
         systemctl --root "$ROOT" enable sddm.service >/dev/null
         ;;
 esac
+
+fi  # full build
 
 msg "Collecting the boot image"
 # The kernel's own version string (7.3.0-rc4-1.spacewar.aarch64), not the RPM's

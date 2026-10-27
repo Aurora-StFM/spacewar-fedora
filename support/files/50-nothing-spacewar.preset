@@ -8,3 +8,4 @@ enable nothing-spacewar-usb-gadget.service
 enable sshd.service
 enable ModemManager.service
 enable NetworkManager.service
+enable nothing-spacewar-usb-dhcp.service

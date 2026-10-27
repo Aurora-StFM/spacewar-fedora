@@ -1,0 +1,3 @@
+# Nothing Phone (1): usb0 (USB networking) is configured by
+# nothing-spacewar-usb-gadget, not NetworkManager.
+SUBSYSTEM=="net", KERNEL=="usb0", ENV{NM_UNMANAGED}="1"

@@ -1,19 +1,31 @@
 #!/usr/bin/bash
 # USB networking for bring-up: expose an NCM network interface over the
-# USB-C port (the same idea as Nura's USB networking). The phone takes
-# 172.16.42.1 and hands the computer an address by DHCP (NetworkManager
-# "shared" connection nothing-spacewar-usb), so `ssh USER@172.16.42.1` works.
+# USB-C port (the same idea as Nura's USB networking). The phone's end is
+# usb0 with 172.16.42.1; nothing-spacewar-usb-dhcp.service hands the computer
+# an address, so `ssh USER@172.16.42.1` works.
+#
+# NetworkManager deliberately leaves USB gadget interfaces alone, so this
+# script configures usb0 itself.
 #
 #   nothing-spacewar-usb-gadget start|stop
 set -eu
 
 G=/sys/kernel/config/usb_gadget/spacewar
+IFACE=usb0
+ADDR=172.16.42.1/24
 
 start() {
     modprobe libcomposite 2>/dev/null || true
     mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
     [ -d "$G" ] && stop
-    udc="$(ls /sys/class/udc 2>/dev/null | head -n1)"
+
+    # The USB controller can appear a little after this service starts.
+    udc=""
+    for _ in $(seq 1 50); do
+        udc="$(ls /sys/class/udc 2>/dev/null | head -n1)"
+        [ -n "$udc" ] && break
+        sleep 0.2
+    done
     [ -n "$udc" ] || { echo "no USB device controller found" >&2; exit 1; }
 
     mkdir -p "$G"
@@ -22,7 +34,7 @@ start() {
     mkdir -p "$G/strings/0x409"
     echo "Nothing" > "$G/strings/0x409/manufacturer"
     echo "Phone (1) Fedora" > "$G/strings/0x409/product"
-    serial="$(cat /etc/machine-id 2>/dev/null | cut -c1-16)"
+    serial="$(cut -c1-16 /etc/machine-id 2>/dev/null || true)"
     echo "${serial:-spacewar}" > "$G/strings/0x409/serialnumber"
 
     mkdir -p "$G/functions/ncm.usb0"
@@ -30,10 +42,29 @@ start() {
     echo "NCM" > "$G/configs/c.1/strings/0x409/configuration"
     ln -s "$G/functions/ncm.usb0" "$G/configs/c.1/"
     echo "$udc" > "$G/UDC"
+
+    # The kernel names the interface; make sure it is usb0, then give it
+    # the phone's address and bring it up.
+    ifname=""
+    for _ in $(seq 1 50); do
+        ifname="$(cat "$G/functions/ncm.usb0/ifname" 2>/dev/null || true)"
+        [ -n "$ifname" ] && [ "$ifname" != "(unnamed net_device)" ] \
+            && [ -e "/sys/class/net/$ifname" ] && break
+        sleep 0.1
+    done
+    [ -e "/sys/class/net/$ifname" ] || { echo "gadget network interface did not appear" >&2; exit 1; }
+    if [ "$ifname" != "$IFACE" ]; then
+        ip link set "$ifname" down
+        ip link set "$ifname" name "$IFACE"
+    fi
+    ip addr flush dev "$IFACE"
+    ip addr add "$ADDR" dev "$IFACE"
+    ip link set "$IFACE" up
 }
 
 stop() {
     [ -d "$G" ] || return 0
+    ip link set "$IFACE" down 2>/dev/null || true
     echo "" > "$G/UDC" 2>/dev/null || true
     rm -f "$G/configs/c.1/ncm.usb0"
     rmdir "$G/configs/c.1/strings/0x409" "$G/configs/c.1" \

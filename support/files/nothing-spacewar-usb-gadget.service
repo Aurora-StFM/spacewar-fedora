@@ -1,8 +1,8 @@
 [Unit]
 Description=USB networking gadget (Nothing Phone 1)
-ConditionPathIsDirectory=/sys/class/udc
 After=systemd-modules-load.service
-Before=NetworkManager.service
+Before=network.target sshd.service
+Wants=nothing-spacewar-usb-dhcp.service
 
 [Service]
 Type=oneshot

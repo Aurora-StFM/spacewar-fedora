@@ -139,6 +139,11 @@ Keep that backup somewhere safe.
 
 ## Updating
 
+After rebuilding one of the kit's packages, you don't need a full image
+build: `sudo ./build.sh rootfs --update` installs the new packages into the
+last image and repacks `boot.img` and `rootfs.img`.
+
+
 Rebuild the packages and copy them over, or serve `out/rpms` as a repository.
 On the phone, `sudo dnf install ./kernel-spacewar-*.rpm` writes the new kernel
 to the boot slot. Fedora's own kernel is excluded from dnf; it can't boot this

@@ -7,6 +7,7 @@
 #   ./build.sh support                        package nothing-spacewar-support
 #   ./build.sh extras                         build hexagonrpc, qbootctl, dummystreamhack (mock)
 #   sudo ./build.sh rootfs --user NAME        build rootfs.img and boot.img
+#   sudo ./build.sh rootfs --update           reinstall rebuilt kit packages, repack images
 #   sudo ./build.sh all --user NAME           everything above in order
 #
 # Run on an x86_64 (or aarch64) Fedora machine.
@@ -56,7 +57,7 @@ case "$step" in
         "$KIT_DIR/image/build-rootfs.sh" "$@"
         ;;
     *)
-        sed -n '2,13p' "$0"
+        sed -n "2,14p" "$0"
         exit 1
         ;;
 esac

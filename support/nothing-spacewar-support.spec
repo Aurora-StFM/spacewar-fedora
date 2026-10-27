@@ -1,5 +1,5 @@
 Name:           nothing-spacewar-support
-Version:        0.3
+Version:        0.4
 Release:        1
 Summary:        Fedora integration for the Nothing Phone (1)
 License:        MIT AND BSD-3-Clause
@@ -14,10 +14,11 @@ Source7:        81-nothing-spacewar.rules
 Source9:        qbootctl-mark-successful.service
 Source10:       nothing-spacewar-usb-gadget
 Source11:       nothing-spacewar-usb-gadget.service
-Source12:       nothing-spacewar-usb.nmconnection
+Source12:       nothing-spacewar-usb-dhcp.service
 Source13:       nothing-spacewar-backup
 Source14:       60-nothing-spacewar-ucm.conf
 Source15:       ucm2.tar
+Source16:       86-nothing-spacewar-usb.rules
 
 Requires:       python3
 Requires:       dracut
@@ -25,6 +26,8 @@ Requires:       systemd-udev
 Requires:       util-linux
 Requires:       coreutils
 Requires:       NetworkManager
+Requires:       iproute
+Requires:       dnsmasq
 Requires:       openssh-server
 Requires:       rmtfs
 Requires:       tqftpserv
@@ -42,7 +45,7 @@ kernel-spacewar:
 - dracut settings for a small generic initramfs with display and touch
 - presets for rmtfs, tqftpserv, hexagonrpcd's sensor service and A/B slot
   marking
-- USB networking (NCM, phone at 172.16.42.1) for SSH during bring-up
+- USB networking (NCM, phone at 172.16.42.1, DHCP for the computer) for SSH
 - nothing-spacewar-backup, which saves the partitions a reflash can't restore
 - ALSA UCM profiles for SC7280 devices (sc7280-mainline/alsa-ucm-conf
   commit %{ucmcommit}) plus the kit's Voice Call profile for this phone,
@@ -65,17 +68,18 @@ install -Dm0644 %{SOURCE7} %{buildroot}/usr/lib/udev/rules.d/81-nothing-spacewar
 install -Dm0644 %{SOURCE9} %{buildroot}/usr/lib/systemd/system/qbootctl-mark-successful.service
 install -Dm0755 %{SOURCE10} %{buildroot}/usr/libexec/nothing-spacewar/nothing-spacewar-usb-gadget
 install -Dm0644 %{SOURCE11} %{buildroot}/usr/lib/systemd/system/nothing-spacewar-usb-gadget.service
-install -Dm0600 %{SOURCE12} %{buildroot}/usr/lib/NetworkManager/system-connections/nothing-spacewar-usb.nmconnection
+install -Dm0644 %{SOURCE12} %{buildroot}/usr/lib/systemd/system/nothing-spacewar-usb-dhcp.service
+install -Dm0644 %{SOURCE16} %{buildroot}/usr/lib/udev/rules.d/86-nothing-spacewar-usb.rules
 install -Dm0755 %{SOURCE13} %{buildroot}/usr/bin/nothing-spacewar-backup
 install -Dm0644 %{SOURCE14} %{buildroot}/usr/lib/environment.d/60-nothing-spacewar-ucm.conf
 mkdir -p %{buildroot}/usr/share/nothing-spacewar/alsa %{buildroot}/etc/nothing-spacewar
 cp -a ucm2 %{buildroot}/usr/share/nothing-spacewar/alsa/
 
 %post
-%systemd_post qbootctl-mark-successful.service nothing-spacewar-usb-gadget.service
+%systemd_post qbootctl-mark-successful.service nothing-spacewar-usb-gadget.service nothing-spacewar-usb-dhcp.service
 
 %preun
-%systemd_preun qbootctl-mark-successful.service nothing-spacewar-usb-gadget.service
+%systemd_preun qbootctl-mark-successful.service nothing-spacewar-usb-gadget.service nothing-spacewar-usb-dhcp.service
 
 %files
 /usr/lib/kernel/install.d/95-nothing-spacewar.install
@@ -87,13 +91,19 @@ cp -a ucm2 %{buildroot}/usr/share/nothing-spacewar/alsa/
 /usr/lib/udev/rules.d/81-nothing-spacewar.rules
 /usr/lib/systemd/system/qbootctl-mark-successful.service
 /usr/lib/systemd/system/nothing-spacewar-usb-gadget.service
-/usr/lib/NetworkManager/system-connections/nothing-spacewar-usb.nmconnection
+/usr/lib/systemd/system/nothing-spacewar-usb-dhcp.service
+/usr/lib/udev/rules.d/86-nothing-spacewar-usb.rules
 /usr/lib/environment.d/60-nothing-spacewar-ucm.conf
 /usr/bin/nothing-spacewar-backup
 /usr/share/nothing-spacewar
 %dir /etc/nothing-spacewar
 
 %changelog
+* Tue Oct 27 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.4-1
+- USB networking: configure usb0 in the gadget script and serve DHCP with
+  dnsmasq; NetworkManager ignores gadget interfaces, so the shared
+  connection profile never came up (laptop saw NO-CARRIER)
+
 * Tue Oct 27 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.3-1
 - Drop the dummystreamhack@ user unit; the dummystreamhack package ships
   its own

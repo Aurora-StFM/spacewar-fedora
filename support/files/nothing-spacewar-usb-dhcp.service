@@ -1,0 +1,19 @@
+[Unit]
+Description=DHCP for USB networking (Nothing Phone 1)
+# Gives the computer on the other end of the USB cable an address in
+# 172.16.42.0/24. No gateway and no DNS are handed out, so the computer's
+# own internet connection is left alone. DNS is off (port 0).
+BindsTo=nothing-spacewar-usb-gadget.service
+After=nothing-spacewar-usb-gadget.service
+
+[Service]
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/dev/null \
+    --port=0 --interface=usb0 --bind-interfaces --except-interface=lo \
+    --dhcp-range=172.16.42.2,172.16.42.20,255.255.255.0,1h \
+    --dhcp-option=option:router --dhcp-option=option:dns-server \
+    --dhcp-leasefile=/var/lib/dnsmasq/usb0.leases --pid-file=
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
