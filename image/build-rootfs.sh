@@ -11,7 +11,7 @@ set -euo pipefail
 . "$(dirname "$0")/../lib/common.sh"
 
 require_root
-require_cmds dnf rpm mkfs.ext4 img2simg useradd chpasswd systemctl du
+require_cmds dnf rpm mkfs.ext4 img2simg useradd usermod openssl systemctl du findmnt mknod
 require_qemu_aarch64
 
 USER_NAME=""
@@ -73,9 +73,44 @@ DNF=(dnf -y -q --installroot="$ROOT" --releasever="$FEDORA_RELEASE" --forcearch=
      --use-host-config --setopt=install_weak_deps=False
      --setopt=excludepkgs=kernel,kernel-core,kernel-modules,kernel-modules-core,kernel-modules-extra)
 
+# Package scripts (dracut above all) need /proc, /sys and a minimal /dev in
+# the image while they run. /dev is a private tmpfs with a few device nodes
+# rather than the host's /dev, so nothing in the image can touch real devices.
+mount_chroot() {
+    mkdir -p "$ROOT/proc" "$ROOT/sys" "$ROOT/dev"
+    mount -t proc proc "$ROOT/proc"
+    mount -t sysfs -o ro sysfs "$ROOT/sys"
+    mount -t tmpfs -o mode=0755,nosuid dev "$ROOT/dev"
+    mknod -m 0666 "$ROOT/dev/null" c 1 3
+    mknod -m 0666 "$ROOT/dev/zero" c 1 5
+    mknod -m 0666 "$ROOT/dev/full" c 1 7
+    mknod -m 0666 "$ROOT/dev/random" c 1 8
+    mknod -m 0666 "$ROOT/dev/urandom" c 1 9
+    mknod -m 0666 "$ROOT/dev/tty" c 5 0
+    ln -s /proc/self/fd "$ROOT/dev/fd"
+    ln -s /proc/self/fd/0 "$ROOT/dev/stdin"
+    ln -s /proc/self/fd/1 "$ROOT/dev/stdout"
+    ln -s /proc/self/fd/2 "$ROOT/dev/stderr"
+    mkdir -p "$ROOT/dev/pts" "$ROOT/dev/shm"
+}
+umount_chroot() {
+    local m
+    for m in dev sys proc; do
+        mountpoint -q "$ROOT/$m" && umount -l "$ROOT/$m"
+    done
+    # Refuse to go on (and to delete anything) while something is still
+    # mounted inside the image.
+    if [ -n "$(findmnt -R -n -o TARGET --list "$ROOT" 2>/dev/null | grep -v "^$ROOT\$")" ]; then
+        die "something is still mounted under $ROOT; unmount it by hand"
+    fi
+}
+trap 'umount_chroot 2>/dev/null || true' EXIT
+
 msg "Creating root filesystem in $ROOT (Fedora $FEDORA_RELEASE, $UI)"
-rm -rf "$ROOT"
+[ -d "$ROOT" ] && umount_chroot
+rm -rf --one-file-system "$ROOT"
 mkdir -p "$ROOT"
+mount_chroot
 "${DNF[@]}" install "${BASE_PKGS[@]}"
 msg2 "installing UI packages (missing ones are skipped with a warning)"
 "${DNF[@]}" install --skip-unavailable "${UI_PKGS[@]}"
@@ -107,8 +142,18 @@ useradd --root "$ROOT" -m -u 1000 -U -G wheel -c "$USER_NAME" "$USER_NAME"
 for g in audio video input dialout feedbackd; do
     grep -q "^$g:" "$ROOT/etc/group" && usermod --root "$ROOT" -aG "$g" "$USER_NAME"
 done
-printf '%s:%s\n' "$USER_NAME" "$PW1" | chpasswd --root "$ROOT"
+# Set the password by writing the hash into the image's /etc/shadow.
+# chpasswd --root can't be used: SELinux confines it and stops it from
+# entering a folder under /home.
+PW_HASH="$(printf '%s' "$PW1" | openssl passwd -6 -stdin)"
 unset PW1 PW2
+[[ "$PW_HASH" == '$6$'* ]] || die "could not hash the password"
+awk -F: -v OFS=: -v u="$USER_NAME" -v h="$PW_HASH" \
+    '$1 == u { $2 = h; found = 1 } { print } END { exit !found }' \
+    "$ROOT/etc/shadow" > "$ROOT/etc/shadow.new" || die "$USER_NAME not found in the image's /etc/shadow"
+chmod 0000 "$ROOT/etc/shadow.new"
+mv -f "$ROOT/etc/shadow.new" "$ROOT/etc/shadow"
+unset PW_HASH
 
 systemctl --root "$ROOT" preset-all >/dev/null
 systemctl --root "$ROOT" set-default graphical.target >/dev/null
@@ -142,6 +187,10 @@ BOOT_IMG="$ROOT/boot/nothing-spacewar/boot-$KREL.img"
 cp "$BOOT_IMG" "$OUT_DIR/boot.img"
 chmod 0644 "$OUT_DIR/boot.img"
 
+# Unmount /proc, /sys and /dev before the image is copied, or their
+# contents would end up in it.
+umount_chroot
+
 msg "Creating the ext4 image"
 used_mb="$(du -sxm "$ROOT" | cut -f1)"
 size_mb=$(( used_mb * 11 / 10 + ROOTFS_EXTRA_MB ))
@@ -151,7 +200,9 @@ truncate -s "${size_mb}M" "$RAW"
 mkfs.ext4 -q -L fedora_root -d "$ROOT" "$RAW"
 img2simg "$RAW" "$OUT_DIR/rootfs.img"
 rm -f "$RAW"
-[ -n "${SUDO_USER:-}" ] && chown "$SUDO_USER": "$OUT_DIR/boot.img" "$OUT_DIR/rootfs.img"
+if [ -n "${SUDO_USER:-}" ]; then
+    chown "$SUDO_USER": "$OUT_DIR/boot.img" "$OUT_DIR/rootfs.img"
+fi
 
 msg "Done"
 msg2 "$OUT_DIR/boot.img   (kernel $KREL)"
