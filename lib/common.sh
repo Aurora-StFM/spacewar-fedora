@@ -7,7 +7,15 @@ export KIT_DIR
 # shellcheck source=../config.env
 . "$KIT_DIR/config.env"
 
-KERNEL_RELEASE_STRING="${KERNEL_VERSION}-${KERNEL_PKG_RELEASE}.spacewar.aarch64"
+# The kernel's release string (uname -r). RPM allows only one "-" in it (it
+# also becomes the kernel-uname-r version), so when the kernel version
+# already has one (7.3.0-rc4) the kit's suffix is joined with "." instead,
+# as in Fedora's own rc kernels: 7.3.0-rc4.1.spacewar.aarch64.
+case "$KERNEL_VERSION" in
+    *-*) KERNEL_LOCALVERSION=".${KERNEL_PKG_RELEASE}.spacewar.aarch64" ;;
+    *)   KERNEL_LOCALVERSION="-${KERNEL_PKG_RELEASE}.spacewar.aarch64" ;;
+esac
+KERNEL_RELEASE_STRING="${KERNEL_VERSION}${KERNEL_LOCALVERSION}"
 # RPM versions can't contain "-"; "~" sorts a release candidate before the
 # final release (7.3.0~rc4 < 7.3.0), as in Fedora's own kernel packages.
 KERNEL_RPM_VERSION="${KERNEL_VERSION//-/\~}"

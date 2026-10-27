@@ -17,7 +17,7 @@ JOBS="${JOBS:-$(nproc)}"
 # The port developers build with LLVM; clang cross-compiles without a
 # separate aarch64 toolchain.
 KMAKE=(make -C "$SRC" O="$BUILD" ARCH=arm64 LLVM=1
-       LOCALVERSION="-${KERNEL_PKG_RELEASE}.spacewar.aarch64")
+       LOCALVERSION="$KERNEL_LOCALVERSION")
 
 mkdir -p "$WORK_DIR" "$RPM_DIR"
 
@@ -34,7 +34,8 @@ for p in "${PATCHES[@]}"; do
 done
 
 msg "Preparing configuration ($KERNEL_CONFIG_TARGETS + Fedora)"
-rm -rf "$BUILD"
+# The build directory is kept between runs, so a rebuild only recompiles
+# what changed; the config targets below rewrite .config from scratch.
 mkdir -p "$BUILD"
 # shellcheck disable=SC2086  # KERNEL_CONFIG_TARGETS is a list of make targets
 "${KMAKE[@]}" $KERNEL_CONFIG_TARGETS >/dev/null
@@ -96,5 +97,6 @@ rpmbuild -bb --target aarch64-linux \
     "$KIT_DIR/kernel/kernel-spacewar.spec"
 find "$TOP/RPMS" -name '*.rpm' -exec cp -t "$RPM_DIR" {} +
 RPM_GLOB="$RPM_DIR/kernel-spacewar-${KERNEL_RPM_VERSION}-${KERNEL_PKG_RELEASE}.aarch64.rpm"
+[ -f "$RPM_GLOB" ] || die "rpmbuild did not produce $RPM_GLOB"
 sign_rpms "$RPM_GLOB"
 msg "Done: $RPM_GLOB"
