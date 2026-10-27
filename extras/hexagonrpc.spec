@@ -15,7 +15,6 @@ BuildRequires:  gcc
 BuildRequires:  meson
 BuildRequires:  json-c-devel
 BuildRequires:  systemd-rpm-macros
-%{?sysusers_requires_compat}
 
 %description
 hexagonrpcd answers FastRPC calls from Qualcomm DSPs, serving the files the
@@ -32,11 +31,15 @@ phones such as the Nothing Phone (1). Commit %{hexcommit}.
 
 %install
 %meson_install
+# data/meson.build installs the units under libdir (/usr/lib64 on 64-bit
+# Fedora); systemd only reads /usr/lib/systemd/system.
+if [ -d %{buildroot}%{_libdir}/systemd/system ]; then
+    mkdir -p %{buildroot}%{_unitdir}
+    mv %{buildroot}%{_libdir}/systemd/system/*.service %{buildroot}%{_unitdir}/
+    rmdir %{buildroot}%{_libdir}/systemd/system %{buildroot}%{_libdir}/systemd
+fi
 install -Dm0644 %{SOURCE1} %{buildroot}%{_sysusersdir}/hexagonrpc.conf
 install -Dm0644 %{SOURCE2} %{buildroot}%{_udevrulesdir}/70-hexagonrpc.rules
-
-%pre
-%sysusers_create_compat %{SOURCE1}
 
 %post
 %systemd_post hexagonrpcd-adsp-sensorspd.service

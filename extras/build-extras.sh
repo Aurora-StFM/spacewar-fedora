@@ -17,6 +17,18 @@ SRC="$WORK_DIR/extras-src"
 RES="$WORK_DIR/extras-result"
 mkdir -p "$SRC" "$RES" "$RPM_DIR"
 
+# mock_failed NAME RESULTDIR: show the end of mock's logs and stop.
+mock_failed() {
+    local log
+    for log in "$2/build.log" "$2/root.log"; do
+        [ -s "$log" ] || continue
+        warn "last lines of $log:"
+        tail -n 40 "$log" >&2
+        break
+    done
+    die "building $1 failed (full logs in $2)"
+}
+
 # mock_build NAME DEFINES...: build extras/NAME.spec from $SRC/NAME.
 mock_build() {
     local name="$1" sources="$SRC/$1" result="$RES/$1"
@@ -28,9 +40,11 @@ mock_build() {
     cp "$KIT_DIR"/extras/*.sysusers "$KIT_DIR"/extras/*.rules "$sources/"
     mock -q -r "$MOCK_CFG" --forcearch aarch64 --buildsrpm \
         --spec "$KIT_DIR/extras/$name.spec" --sources "$sources" \
-        "${defs[@]}" --resultdir "$result/srpm"
+        "${defs[@]}" --resultdir "$result/srpm" \
+        || mock_failed "$name" "$result/srpm"
     mock -q -r "$MOCK_CFG" --forcearch aarch64 --rebuild "$result"/srpm/*.src.rpm \
-        "${defs[@]}" --resultdir "$result/rpm"
+        "${defs[@]}" --resultdir "$result/rpm" \
+        || mock_failed "$name" "$result/rpm"
     rm -f "$RPM_DIR/$name"-[0-9]*.rpm
     find "$result/rpm" -name "$name-*.aarch64.rpm" ! -name '*-debug*' -exec cp -t "$RPM_DIR" {} +
     sign_rpms "$RPM_DIR/$name"-[0-9]*.aarch64.rpm
