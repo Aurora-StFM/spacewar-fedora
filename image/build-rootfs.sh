@@ -56,13 +56,17 @@ BASE_PKGS=(
 )
 case "$UI" in
     phosh)
-        UI_PKGS=(phosh phoc phosh-mobile-settings squeekboard gnome-calls chatty
+        # Fedora's Phosh is a login session (phosh-session), so something
+        # has to start it: greetd logs the user straight in, Phosh's own
+        # lock screen asks for the PIN.
+        UI_REQUIRED=(phosh phoc greetd greetd-selinux)
+        UI_PKGS=(phosh-mobile-settings squeekboard gnome-calls chatty
                  gnome-console gnome-settings-daemon gnome-control-center
                  nautilus firefox feedbackd)
         ;;
     plasma-mobile)
-        UI_PKGS=(plasma-mobile plasma-dialer spacebar sddm maliit-keyboard
-                 konsole dolphin firefox)
+        UI_REQUIRED=(plasma-mobile sddm)
+        UI_PKGS=(plasma-dialer spacebar maliit-keyboard konsole dolphin firefox)
         ;;
     *) die "UI must be phosh or plasma-mobile (got '$UI')" ;;
 esac
@@ -113,6 +117,7 @@ mkdir -p "$ROOT"
 mount_chroot
 "${DNF[@]}" install "${BASE_PKGS[@]}"
 msg2 "installing UI packages (missing ones are skipped with a warning)"
+"${DNF[@]}" install "${UI_REQUIRED[@]}"
 "${DNF[@]}" install --skip-unavailable "${UI_PKGS[@]}"
 
 msg "Installing the kit's packages"
@@ -159,12 +164,34 @@ systemctl --root "$ROOT" preset-all >/dev/null
 systemctl --root "$ROOT" set-default graphical.target >/dev/null
 case "$UI" in
     phosh)
-        if [ -f "$ROOT/usr/lib/systemd/system/phosh.service" ]; then
-            # Fedora's phosh.service starts the shell for the user with UID 1000.
-            systemctl --root "$ROOT" enable phosh.service >/dev/null
-        else
-            warn "phosh.service not found; enable a display manager on the phone"
+        # greetd runs its greeter as an unprivileged user; Fedora's package
+        # creates it, but the name differs between versions.
+        GREETER=""
+        for u in greetd greeter; do
+            if grep -q "^$u:" "$ROOT/etc/passwd"; then GREETER="$u"; break; fi
+        done
+        if [ -z "$GREETER" ]; then
+            useradd --root "$ROOT" -r -M -d /var/lib/greetd -s /usr/sbin/nologin -G video greeter
+            GREETER=greeter
         fi
+        mkdir -p "$ROOT/etc/greetd"
+        cat > "$ROOT/etc/greetd/config.toml" <<GREETD
+# Nothing Phone (1): log $USER_NAME straight into Phosh at boot; Phosh's
+# lock screen asks for the PIN. After logging out, a text login on the
+# same screen can start Phosh again.
+[terminal]
+# tty1 keeps its normal text login as a fallback.
+vt = 7
+
+[initial_session]
+command = "phosh-session"
+user = "$USER_NAME"
+
+[default_session]
+command = "agreety --cmd phosh-session"
+user = "$GREETER"
+GREETD
+        systemctl --root "$ROOT" enable greetd.service >/dev/null
         ;;
     plasma-mobile)
         mkdir -p "$ROOT/etc/sddm.conf.d"
