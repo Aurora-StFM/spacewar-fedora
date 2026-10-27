@@ -1,0 +1,8 @@
+[Unit]
+Description=Qualcomm voice call ALSA stream (%I)
+# Started and stopped by the "Voice Call" UCM profile. The instance is the
+# direction and PCM, e.g. Rhw:NP1,6 (downlink) or Thw:NP1,6 (uplink).
+
+[Service]
+ExecStart=/usr/bin/dummystreamhack %I
+KillMode=process

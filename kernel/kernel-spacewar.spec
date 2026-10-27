@@ -1,6 +1,6 @@
 # Binary-only package: the kernel is cross-compiled by build-kernel.sh and the
-# staged tree is passed in as Source0. Pass kver, kversion, krelease and
-# kcommit with --define.
+# staged tree is passed in as Source0. Pass kver, kversion, krelease, kcommit
+# and kbranch with --define.
 
 %global debug_package %{nil}
 %global __os_install_post %{nil}
@@ -10,9 +10,9 @@
 Name:           kernel-spacewar
 Version:        %{kversion}
 Release:        %{krelease}
-Summary:        Linux kernel for the Nothing Phone (1) (sc7280-mainline)
+Summary:        Linux kernel for the Nothing Phone (1)
 License:        GPL-2.0-only
-URL:            https://github.com/sc7280-mainline/linux
+URL:            https://github.com/mainlining/linux
 Source0:        kernel-spacewar-stage.tar
 ExclusiveArch:  aarch64
 AutoReqProv:    no
@@ -33,9 +33,10 @@ Provides:       kernel-modules-uname-r = %{kver}
 Provides:       kernel-modules-core-uname-r = %{kver}
 
 %description
-Linux %{kversion} from the sc7280-mainline fork (commit %{kcommit}), the
-kernel Nura (postmarketOS) uses for SC7280/SM7325 devices, built with Nura's
-configuration plus the settings Fedora needs (SELinux, compressed firmware).
+Linux %{kversion} with the Nura (postmarketOS) port developers' Nothing
+Phone (1) patches (mainlining/linux %{kbranch}, commit %{kcommit}), built
+with the branch's configuration plus the settings Fedora needs (SELinux,
+compressed firmware).
 Kernel %{kver}. nothing-spacewar-support turns it into an Android boot image
 and writes it to the phone's boot partition.
 
@@ -82,8 +83,14 @@ done
 %ghost %attr(0600, root, root) /boot/nothing-spacewar/initramfs-%{kver}.img
 
 %changelog
-* Mon Oct 26 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - %{kversion}-%{krelease}
+* Tue Oct 27 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - %{kversion}-%{krelease}
+- Switch to mainlining/linux fekz115/spacewar (7.3.0-rc4): microphones,
+  call audio (q6voice), stereo speakers (tfa98xx), haptics, Glyph LEDs,
+  mainline touchscreen driver, Wi-Fi calibration variant
+- Configuration from defconfig + sc7280.config instead of Nura's config
+- kernel/patches/0001: fix an uninitialised codec_dai in the sm8250 sound
+  card driver's LPI MI2S cases (not used by this phone)
+
+* Mon Oct 26 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 7.2.9-1
 - First build: sc7280-mainline v7.2.9-sc7280 with Nura's config and a
   Fedora fragment (SELinux, compressed firmware, USB gadget networking)
-- Vibration motor: qcom-hv-haptics driver for the PM8350B haptics block
-  (direct play, FF_RUMBLE), enabled in the device tree at 3.6 V

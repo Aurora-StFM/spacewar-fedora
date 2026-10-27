@@ -1,0 +1,49 @@
+From 5322e12b289e0c1c79159015a24a6ab50b735d09 Mon Sep 17 00:00:00 2001
+From: Aurora-StFM <scp.173.x@gmail.com>
+Date: Tue, 27 Oct 2026 10:05:58 +0100
+Subject: [PATCH] ASoC: qcom: sm8250: set the format on all codec DAIs for LPI
+ MI2S too
+
+The change that applies codec_fmt to every codec DAI of a link converted
+the Primary to Senary MI2S cases to for_each_rtd_codec_dais() but left
+the LPI_MI2S_RX_0 and LPI_MI2S_TX_3 cases calling snd_soc_dai_set_fmt()
+on codec_dai, which is no longer initialised there:
+
+  sm8250.c:220:23: warning: variable 'codec_dai' is uninitialized when
+  used here [-Wuninitialized]
+
+Use the same loop in those two cases.
+
+Co-developed-by: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Aurora-StFM <scp.173.x@gmail.com>
+---
+ sound/soc/qcom/sm8250.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/qcom/sm8250.c b/sound/soc/qcom/sm8250.c
+index bf30477e9..8757a7a5a 100644
+--- a/sound/soc/qcom/sm8250.c
++++ b/sound/soc/qcom/sm8250.c
+@@ -217,7 +217,8 @@ static int sm8250_snd_startup(struct snd_pcm_substream *substream)
+ 			Q6AFE_LPASS_CLK_ID_INT0_MI2S_IBIT,
+ 			MI2S_BCLK_RATE, SNDRV_PCM_STREAM_PLAYBACK);
+ 		snd_soc_dai_set_fmt(cpu_dai, fmt);
+-		snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
++		for_each_rtd_codec_dais(rtd, j, codec_dai)
++			snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+ 		break;
+ 	case LPI_MI2S_TX_3:
+ 		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
+@@ -225,7 +226,8 @@ static int sm8250_snd_startup(struct snd_pcm_substream *substream)
+ 			Q6AFE_LPASS_CLK_ID_INT3_MI2S_IBIT,
+ 			MI2S_BCLK_RATE, SNDRV_PCM_STREAM_CAPTURE);
+ 		snd_soc_dai_set_fmt(cpu_dai, fmt);
+-		snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
++		for_each_rtd_codec_dais(rtd, j, codec_dai)
++			snd_soc_dai_set_fmt(codec_dai, codec_dai_fmt);
+ 		break;
+ 	case SENARY_MI2S_RX:
+ 		codec_dai_fmt |= SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_I2S;
+-- 
+2.43.0
+

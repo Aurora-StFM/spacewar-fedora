@@ -8,6 +8,9 @@ export KIT_DIR
 . "$KIT_DIR/config.env"
 
 KERNEL_RELEASE_STRING="${KERNEL_VERSION}-${KERNEL_PKG_RELEASE}.spacewar.aarch64"
+# RPM versions can't contain "-"; "~" sorts a release candidate before the
+# final release (7.3.0~rc4 < 7.3.0), as in Fedora's own kernel packages.
+KERNEL_RPM_VERSION="${KERNEL_VERSION//-/\~}"
 RPM_DIR="$OUT_DIR/rpms"
 WORK_DIR="$OUT_DIR/work"
 SIGN_DIR="$OUT_DIR/signing"

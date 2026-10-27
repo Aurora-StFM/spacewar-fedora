@@ -1,0 +1,29 @@
+From 8f35b3c736325213530f37100d50cb154bcdcdd2 Mon Sep 17 00:00:00 2001
+From: Aurora-StFM <scp.173.x@gmail.com>
+Date: Tue, 27 Oct 2026 10:04:19 +0100
+Subject: [PATCH 2/2] ucm2: Nothing: spacewar: link profile for the sm7325 card
+ driver
+
+Newer kernels describe the Nothing Phone (1) sound card as
+"nothing,spacewar-sndcard", which the sm8250 machine driver reports
+with driver name "sm7325". Link the profile under conf.d/sm7325 too, so
+it is found with both the old and the new compatible.
+
+Co-developed-by: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Aurora-StFM <scp.173.x@gmail.com>
+---
+ ucm2/conf.d/sm7325/NP1.conf | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 120000 ucm2/conf.d/sm7325/NP1.conf
+
+diff --git a/ucm2/conf.d/sm7325/NP1.conf b/ucm2/conf.d/sm7325/NP1.conf
+new file mode 120000
+index 0000000..8f3351b
+--- /dev/null
++++ b/ucm2/conf.d/sm7325/NP1.conf
+@@ -0,0 +1 @@
++../../Nothing/spacewar/NP1.conf
+\ No newline at end of file
+-- 
+2.43.0
+

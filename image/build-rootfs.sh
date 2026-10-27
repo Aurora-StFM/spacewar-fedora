@@ -32,9 +32,10 @@ RPMS=("${KERNEL_RPMS[@]}"
       "$RPM_DIR"/nothing-spacewar-firmware-*.noarch.rpm
       "$RPM_DIR"/nothing-spacewar-support-*.noarch.rpm
       "$RPM_DIR"/hexagonrpc-[0-9]*.aarch64.rpm
-      "$RPM_DIR"/qbootctl-[0-9]*.aarch64.rpm)
+      "$RPM_DIR"/qbootctl-[0-9]*.aarch64.rpm
+      "$RPM_DIR"/dummystreamhack-[0-9]*.aarch64.rpm)
 shopt -u nullglob
-[ ${#KERNEL_RPMS[@]} -ge 1 ] && [ ${#RPMS[@]} -ge 5 ] \
+[ ${#KERNEL_RPMS[@]} -ge 1 ] && [ ${#RPMS[@]} -ge 6 ] \
     || die "build the packages first (./build.sh kernel firmware support extras)"
 [ -f "$SIGN_PUBKEY" ] || die "signing key $SIGN_PUBKEY missing"
 
@@ -132,7 +133,10 @@ EOF
 esac
 
 msg "Collecting the boot image"
-KREL="$(rpm --root "$ROOT" -q --qf '%{VERSION}-%{RELEASE}.spacewar.aarch64\n' kernel-spacewar | sort -V | tail -n1)"
+# The kernel's own version string (7.3.0-rc4-1.spacewar.aarch64), not the RPM's
+# (7.3.0~rc4-1): take it from the installed module directories.
+KREL="$(find "$ROOT/usr/lib/modules" -mindepth 1 -maxdepth 1 -name '*.spacewar.aarch64' -printf '%f\n' | sort -V | tail -n1)"
+[ -n "$KREL" ] || die "kernel-spacewar is not installed in $ROOT"
 BOOT_IMG="$ROOT/boot/nothing-spacewar/boot-$KREL.img"
 [ -s "$BOOT_IMG" ] || die "no boot image for $KREL (did kernel-install run? see the dnf output above)"
 cp "$BOOT_IMG" "$OUT_DIR/boot.img"

@@ -2,10 +2,10 @@
 # Nothing Phone (1) Fedora kit: build entry point.
 #
 #   ./build.sh deps                           install build dependencies (sudo)
-#   ./build.sh kernel [--config-file FILE]    cross-compile kernel-spacewar
+#   ./build.sh kernel                         cross-compile kernel-spacewar
 #   ./build.sh firmware                       package nothing-spacewar-firmware
 #   ./build.sh support                        package nothing-spacewar-support
-#   ./build.sh extras                         build hexagonrpc and qbootctl (mock)
+#   ./build.sh extras                         build hexagonrpc, qbootctl, dummystreamhack (mock)
 #   sudo ./build.sh rootfs --user NAME        build rootfs.img and boot.img
 #   sudo ./build.sh all --user NAME           everything above in order
 #

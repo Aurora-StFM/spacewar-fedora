@@ -1,0 +1,166 @@
+From f1818d4ffd1274d931352ea28629599e9093cb27 Mon Sep 17 00:00:00 2001
+From: Aurora-StFM <scp.173.x@gmail.com>
+Date: Tue, 27 Oct 2026 09:53:50 +0100
+Subject: [PATCH 1/2] ucm2: Nothing: spacewar: add VoiceCall profile
+
+Route q6voice (VoiceMMode1) to the TFA9873 amplifiers on Primary MI2S
+and take the uplink from the bottom microphone through
+TX_CODEC_DMA_TX_3, following the Motorola Edge 30 (dubai) profile.
+Earpiece mode mutes the bottom speaker; speakerphone uses both.
+
+Co-developed-by: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Aurora-StFM <scp.173.x@gmail.com>
+---
+ ucm2/Nothing/spacewar/NP1.conf       |   5 ++
+ ucm2/Nothing/spacewar/VoiceCall.conf | 123 +++++++++++++++++++++++++++
+ 2 files changed, 128 insertions(+)
+ create mode 100644 ucm2/Nothing/spacewar/VoiceCall.conf
+
+diff --git a/ucm2/Nothing/spacewar/NP1.conf b/ucm2/Nothing/spacewar/NP1.conf
+index 4fcbdd5..c2ed228 100644
+--- a/ucm2/Nothing/spacewar/NP1.conf
++++ b/ucm2/Nothing/spacewar/NP1.conf
+@@ -7,6 +7,11 @@ SectionUseCase."HiFi" {
+ 	Comment "HiFi quality Music."
+ }
+ 
++SectionUseCase."Voice Call" {
++	File "/Nothing/spacewar/VoiceCall.conf"
++	Comment "Phone call"
++}
++
+ BootSequence [
+ 	cset "name='HPHL Volume' 20"
+ 	cset "name='HPHR Volume' 20"
+diff --git a/ucm2/Nothing/spacewar/VoiceCall.conf b/ucm2/Nothing/spacewar/VoiceCall.conf
+new file mode 100644
+index 0000000..0271096
+--- /dev/null
++++ b/ucm2/Nothing/spacewar/VoiceCall.conf
+@@ -0,0 +1,123 @@
++# Use case configuration for Nothing Phone (1): voice calls
++#
++# Call audio runs inside the ADSP (q6voice, VoiceMMode1). The modem's
++# downlink goes to the TFA9873 amplifiers on Primary MI2S, the uplink comes
++# from the WCD9385 through TX_CODEC_DMA_TX_3. dummystreamhack holds the
++# hostless VoiceMMode1 streams open (PCM device 6, the seventh dai link)
++# while a device is in use.
++#
++# Not covered yet: wired headset during calls. q6voice-dai has no voice
++# route to RX_CODEC_DMA_RX_0, the WCD9385 headphone path.
++
++SectionVerb {
++	EnableSequence [
++		cset "name='PRI_MI2S_RX Audio Mixer MultiMedia1' 1"
++		cset "name='MultiMedia3 Mixer TX_CODEC_DMA_TX_3' 1"
++		cset "name='PRI_MI2S_RX Voice Mixer VoiceMMode1' 1"
++		cset "name='VoiceMMode1 Capture Mixer TX_CODEC_DMA_TX_3' 1"
++	]
++
++	DisableSequence [
++		cset "name='VoiceMMode1 Capture Mixer TX_CODEC_DMA_TX_3' 0"
++		cset "name='PRI_MI2S_RX Voice Mixer VoiceMMode1' 0"
++		cset "name='MultiMedia3 Mixer TX_CODEC_DMA_TX_3' 0"
++		cset "name='PRI_MI2S_RX Audio Mixer MultiMedia1' 0"
++	]
++
++	Value.TQ "Voice"
++}
++
++SectionDevice."Earpiece" {
++	Comment "Earpiece"
++
++	ConflictingDevice [
++		"Speaker"
++	]
++
++	EnableSequence [
++		# The top amplifier drives the earpiece; mute the bottom speaker.
++		cset "name='Speaker Bottom Switch' off"
++		cset "name='Speaker Top Switch' on"
++
++		exec "systemctl --user start dummystreamhack@Rhw:${CardId},6"
++	]
++
++	DisableSequence [
++		exec "systemctl --user stop dummystreamhack@Rhw:${CardId},6"
++
++		cset "name='Speaker Bottom Switch' on"
++	]
++
++	Value {
++		PlaybackChannels 2
++		PlaybackPriority 200
++		PlaybackPCM "hw:${CardId},0"
++		PlaybackMixer "default:${CardId}"
++		PlaybackVolume "Speaker Top Volume"
++	}
++}
++
++SectionDevice."Speaker" {
++	Comment "Speakerphone"
++
++	ConflictingDevice [
++		"Earpiece"
++	]
++
++	EnableSequence [
++		cset "name='Speaker Top Switch' on"
++		cset "name='Speaker Bottom Switch' on"
++
++		exec "systemctl --user start dummystreamhack@Rhw:${CardId},6"
++	]
++
++	DisableSequence [
++		exec "systemctl --user stop dummystreamhack@Rhw:${CardId},6"
++	]
++
++	Value {
++		PlaybackChannels 2
++		PlaybackPriority 100
++		PlaybackPCM "hw:${CardId},0"
++		PlaybackMixer "default:${CardId}"
++		PlaybackVolume "Speaker Bottom Volume"
++	}
++}
++
++SectionDevice."Mic4" {
++	Comment "Bottom Microphone"
++
++	EnableSequence [
++		cset "name='TX DEC1 MUX' SWR_MIC"
++		cset "name='TX SMIC MUX1' SWR_MIC4"
++		cset "name='TX_AIF1_CAP Mixer DEC1' 1"
++		cset "name='DEC1 MODE' ADC_DEFAULT"
++		cset "name='TX_DEC1 Volume' 84"
++
++		cset "name='ADC3_MIXER Switch' 1"
++		cset "name='HDR34 MUX' NO_HDR34"
++		cset "name='ADC3 MUX' INP4"
++		cset "name='ADC3 Switch' 1"
++		cset "name='TX2 MODE' ADC_LP"
++
++		exec "systemctl --user start dummystreamhack@Thw:${CardId},6"
++	]
++
++	DisableSequence [
++		exec "systemctl --user stop dummystreamhack@Thw:${CardId},6"
++
++		cset "name='TX SMIC MUX1' ZERO"
++		cset "name='TX_AIF1_CAP Mixer DEC1' 0"
++
++		cset "name='ADC3_MIXER Switch' 0"
++		cset "name='ADC3 Switch' 0"
++		cset "name='TX2 MODE' ADC_INVALID"
++	]
++
++	Value {
++		CaptureChannels 1
++		CapturePriority 200
++		CapturePCM "hw:${CardId},2"
++		CaptureMixerElem "ADC3"
++	}
++}
+-- 
+2.43.0
+

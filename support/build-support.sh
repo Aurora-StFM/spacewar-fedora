@@ -16,6 +16,12 @@ msg "Fetching ALSA UCM profiles (${UCM_COMMIT:0:12})"
 UCM="$WORK_DIR/alsa-ucm-conf"
 git_fetch_commit "$UCM_REPO" "$UCM" "$UCM_COMMIT"
 [ -d "$UCM/ucm2" ] || die "no ucm2 directory in $UCM_REPO"
+shopt -s nullglob
+for p in "$KIT_DIR"/support/ucm-patches/*.patch; do
+    msg2 "applying $(basename "$p")"
+    git -C "$UCM" apply "$p" || die "UCM patch failed: $p"
+done
+shopt -u nullglob
 tar -C "$UCM" -cf "$TOP/SOURCES/ucm2.tar" ucm2
 
 # Boot image layout and command line, baked in from config.env. Users can

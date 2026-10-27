@@ -5,30 +5,37 @@ for the Nothing Phone (1), codename Spacewar, on a mainline Linux kernel.
 
 > **Status: untested.** Nothing here has been booted on a phone yet. It is
 > built on the work of the [Nura](https://nura.eco) (formerly postmarketOS)
-> Spacewar port, which does boot: kernel, configuration, firmware and boot
-> image layout all come from there. Written with an AI assistant (Claude).
+> Spacewar port, which does boot: kernel, firmware, audio profiles and boot
+> image layout all come from the people behind it. Written with an AI assistant (Claude).
 > Not affiliated with Nura, Nothing, or the Fedora Project. Read the scripts
 > before running them as root.
 
 It reuses:
 
-- **Kernel:** [sc7280-mainline/linux](https://github.com/sc7280-mainline/linux)
-  tag `v7.2.9-sc7280`, with Nura's kernel configuration.
+- **Kernel:** the port developers' development branch,
+  [mainlining/linux `fekz115/spacewar`](https://github.com/mainlining/linux/tree/fekz115/spacewar)
+  (Linux 7.3-rc4 plus about 70 Nothing Phone (1) patches), with its in-tree
+  `sc7280.config`. It is newer than what Nura ships and includes the
+  microphone, call-audio, stereo-speaker, haptics and Glyph LED work.
 - **Firmware:** [mainlining/firmware-nothing-spacewar](https://github.com/mainlining/firmware-nothing-spacewar).
-- **Audio profiles:** [sc7280-mainline/alsa-ucm-conf](https://github.com/sc7280-mainline/alsa-ucm-conf).
-- **Tools:** [hexagonrpc](https://github.com/linux-msm/hexagonrpc) (sensors) and
-  [qbootctl](https://github.com/linux-msm/qbootctl) (A/B slots), which Fedora
-  doesn't package.
+- **Audio profiles:** [sc7280-mainline/alsa-ucm-conf](https://github.com/sc7280-mainline/alsa-ucm-conf),
+  plus a Voice Call profile for this phone (`support/ucm-patches/`).
+- **Tools:** [hexagonrpc](https://github.com/linux-msm/hexagonrpc) (sensors),
+  [qbootctl](https://github.com/linux-msm/qbootctl) (A/B slots) and
+  [dummystreamhack](https://codeberg.org/valpackett/dummystreamhack) (call
+  audio), which Fedora doesn't package.
 
 All versions are pinned in `config.env`.
 
 ## Expected status
 
-What should work is what works in Nura (see `docs/hardware-findings.md`):
-display, touch, GPU, battery, Bluetooth, GPS, SMS, mobile data, USB. Audio,
-calls, haptics and the fingerprint reader don't work there yet; Wi-Fi, NFC and
-cameras are partial. Sensors need a libssc-enabled iio-sensor-proxy that
-Fedora doesn't ship.
+What works in Nura should work here (see `docs/hardware-findings.md`):
+display, touch, GPU, battery, Bluetooth, GPS, SMS, mobile data, USB. The
+kernel branch adds work in progress for microphones, headphones, stereo
+speakers, calls, haptics, Glyph LEDs and Wi-Fi calibration; expect rough
+edges there. The fingerprint reader doesn't work, NFC and cameras are
+partial. Sensors need a libssc-enabled iio-sensor-proxy that Fedora doesn't
+ship.
 
 ## How it boots
 
@@ -49,10 +56,10 @@ boot partition untouched, set `FLASH_ON_UPDATE=no` in
 |---|---|
 | `build.sh` | Entry point: `deps`, `kernel`, `firmware`, `support`, `extras`, `rootfs`, `all` |
 | `config.env` | Pinned sources, boot image layout, kernel command line, Fedora release, UI |
-| `kernel/` | Cross-compiles the kernel with clang and packages it as `kernel-spacewar`. `fedora.config` adds SELinux, compressed firmware and USB gadget networking to Nura's config. Patches in `kernel/patches/` are applied first. |
+| `kernel/` | Cross-compiles the kernel with clang and packages it as `kernel-spacewar`. The configuration is arm64 `defconfig` plus the branch's `sc7280.config`; `fedora.config` adds SELinux, compressed firmware and USB gadget networking. Patches in `kernel/patches/` are applied first. |
 | `firmware/` | Packages the firmware as `nothing-spacewar-firmware` |
-| `support/` | `nothing-spacewar-support`: boot image plugin and writer, dracut settings, service presets, USB networking, `nothing-spacewar-backup`, audio profiles |
-| `extras/` | Builds `hexagonrpc` and `qbootctl` for aarch64 with mock |
+| `support/` | `nothing-spacewar-support`: boot image plugin and writer, dracut settings, service presets, USB networking, `nothing-spacewar-backup`, audio profiles including calls |
+| `extras/` | Builds `hexagonrpc`, `qbootctl` and `dummystreamhack` for aarch64 with mock |
 | `image/build-rootfs.sh` | Builds `out/rootfs.img` and `out/boot.img` from Fedora's aarch64 repositories |
 | `docs/hardware-findings.md` | What is known about each piece of hardware and the plan |
 
@@ -73,10 +80,9 @@ sudo ./build.sh rootfs --user yourname
 lock screen easiest. Choose the shell with `UI=plasma-mobile` (default
 `phosh`) and the Fedora release with `FEDORA_RELEASE=`.
 
-If downloading Nura's kernel config fails (its GitLab has bot protection),
-open the URL from `NURA_CONFIG_URL` in `config.env` in a browser, save the
-file, and run `./build.sh kernel --config-file FILE`. It is still checked
-against the pinned SHA-512.
+The kernel comes from a personal development branch that can be rebased.
+If `./build.sh kernel` can't fetch the pinned commit any more, pick a newer
+commit from the branch, or keep your own fork (see the note in `config.env`).
 
 ## Step 2: Before flashing
 

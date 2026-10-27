@@ -5,8 +5,12 @@ hostonly="no"
 dracut_rescue_image="no"
 compress="zstd"
 # Display, touchscreen and the USB-C mux early, so the screen works for the
-# emergency shell and an unlock prompt. Same list as Nura's modules-initfs.
-add_drivers+=" msm panel-visionox-rm692e5 spi-geni-qcom fts_tp fsa4480 "
+# emergency shell and an unlock prompt (Nura's modules-initfs list, with the
+# mainline FocalTech driver the kernel branch uses). Built-in ones (msm,
+# spi-geni-qcom) are fine to list.
+add_drivers+=" msm panel-visionox-rm692e5 spi-geni-qcom focaltech_spi focaltech_core fsa4480 "
+# The touchscreen loads its firmware at probe.
+install_optional_items+=" /usr/lib/firmware/qcom/sm7325/nothing/spacewar/focaltech_ts_novatek.bin "
 # GPU firmware msm loads at probe. The zap shader path comes from the device
 # tree, so dracut can't find it by itself. Fedora compresses linux-firmware
 # files, hence the alternatives.
