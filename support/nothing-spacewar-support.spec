@@ -1,5 +1,5 @@
 Name:           nothing-spacewar-support
-Version:        0.5
+Version:        0.6
 Release:        1
 Summary:        Fedora integration for the Nothing Phone (1)
 License:        MIT AND BSD-3-Clause
@@ -25,6 +25,8 @@ Requires:       dracut
 Requires:       systemd-udev
 # pam_systemd.so: logind sessions and seats for the graphical login.
 Requires:       systemd-pam
+# Battery level for the shell (a weak dependency the image build skips).
+Requires:       upower
 Requires:       util-linux
 Requires:       coreutils
 Requires:       NetworkManager
@@ -101,6 +103,9 @@ cp -a ucm2 %{buildroot}/usr/share/nothing-spacewar/alsa/
 %dir /etc/nothing-spacewar
 
 %changelog
+* Wed Oct 28 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.6-1
+- Require upower so Plasma Mobile and Phosh show the battery level
+
 * Tue Oct 27 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.5-1
 - Require systemd-pam: without pam_systemd the SDDM/greetd sessions get no
   logind seat and the compositor can't open the display (black screen)
