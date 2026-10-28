@@ -1,0 +1,13 @@
+[Unit]
+Description=Set the Nothing Phone (1) Bluetooth address
+Documentation=file:///usr/libexec/nothing-spacewar/nothing-spacewar-bt-address
+BindsTo=sys-subsystem-bluetooth-devices-hci0.device
+After=sys-subsystem-bluetooth-devices-hci0.device
+Before=bluetooth.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/nothing-spacewar/nothing-spacewar-bt-address hci0
+# bluetoothd may already have started without a usable controller.
+ExecStartPost=-/usr/bin/systemctl try-restart bluetooth.service

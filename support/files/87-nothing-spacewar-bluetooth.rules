@@ -1,0 +1,2 @@
+# Nothing Phone (1): give the Bluetooth chip an address as soon as it appears.
+ACTION=="add", SUBSYSTEM=="bluetooth", KERNEL=="hci0", TAG+="systemd", ENV{SYSTEMD_WANTS}+="nothing-spacewar-bt-address.service"

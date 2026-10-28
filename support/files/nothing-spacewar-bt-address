@@ -1,0 +1,27 @@
+#!/usr/bin/bash
+# Give the Nothing Phone (1)'s Bluetooth chip (WCN6750) an address.
+#
+# On Android the bootloader writes the address into the device tree; it
+# doesn't for this kernel, so the chip comes up "unconfigured" and BlueZ
+# can't use it. Derive a stable, locally administered address from the
+# phone's serial number (passed by the bootloader as androidboot.serialno),
+# or from /etc/machine-id if that is missing. Set BT_ADDRESS in
+# /etc/nothing-spacewar/bt-address.conf to use a specific address instead.
+set -euo pipefail
+
+hci="${1:-hci0}"
+BT_ADDRESS=""
+[ -r /etc/nothing-spacewar/bt-address.conf ] && . /etc/nothing-spacewar/bt-address.conf
+
+if [ -z "$BT_ADDRESS" ]; then
+    seed="$(tr ' ' '\n' < /proc/cmdline | sed -n 's/^androidboot\.serialno=//p' | head -n1)"
+    [ -n "$seed" ] || seed="$(cat /etc/machine-id 2>/dev/null || true)"
+    [ -n "$seed" ] || { echo "no serial number or machine-id to derive an address from" >&2; exit 1; }
+    hash="$(printf 'nothing-spacewar-bt:%s' "$seed" | sha256sum | cut -c1-10)"
+    # 02:... = locally administered, unicast.
+    BT_ADDRESS="02:${hash:0:2}:${hash:2:2}:${hash:4:2}:${hash:6:2}:${hash:8:2}"
+fi
+
+index="${hci#hci}"
+echo "setting $hci address to $BT_ADDRESS"
+btmgmt --index "$index" public-addr "$BT_ADDRESS"

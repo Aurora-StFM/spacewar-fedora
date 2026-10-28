@@ -1,5 +1,5 @@
 Name:           nothing-spacewar-support
-Version:        0.6
+Version:        0.7
 Release:        1
 Summary:        Fedora integration for the Nothing Phone (1)
 License:        MIT AND BSD-3-Clause
@@ -19,6 +19,9 @@ Source13:       nothing-spacewar-backup
 Source14:       60-nothing-spacewar-ucm.conf
 Source15:       ucm2.tar
 Source16:       86-nothing-spacewar-usb.rules
+Source17:       nothing-spacewar-bt-address
+Source18:       nothing-spacewar-bt-address.service
+Source19:       87-nothing-spacewar-bluetooth.rules
 
 Requires:       python3
 Requires:       dracut
@@ -38,6 +41,8 @@ Requires:       tqftpserv
 Requires:       hexagonrpc
 Requires:       qbootctl
 Requires:       ModemManager
+# btmgmt, to give the Bluetooth chip an address.
+Requires:       bluez
 # Holds the voice call streams open (Voice Call UCM profile).
 Requires:       dummystreamhack
 
@@ -49,6 +54,7 @@ kernel-spacewar:
 - dracut settings for a small generic initramfs with display and touch
 - presets for rmtfs, tqftpserv, hexagonrpcd's sensor service and A/B slot
   marking
+- a Bluetooth address for the WCN6750, which comes up without one
 - USB networking (NCM, phone at 172.16.42.1, DHCP for the computer) for SSH
 - nothing-spacewar-backup, which saves the partitions a reflash can't restore
 - ALSA UCM profiles for SC7280 devices (sc7280-mainline/alsa-ucm-conf
@@ -74,6 +80,11 @@ install -Dm0755 %{SOURCE10} %{buildroot}/usr/libexec/nothing-spacewar/nothing-sp
 install -Dm0644 %{SOURCE11} %{buildroot}/usr/lib/systemd/system/nothing-spacewar-usb-gadget.service
 install -Dm0644 %{SOURCE12} %{buildroot}/usr/lib/systemd/system/nothing-spacewar-usb-dhcp.service
 install -Dm0644 %{SOURCE16} %{buildroot}/usr/lib/udev/rules.d/86-nothing-spacewar-usb.rules
+/usr/lib/udev/rules.d/87-nothing-spacewar-bluetooth.rules
+/usr/lib/systemd/system/nothing-spacewar-bt-address.service
+install -Dm0755 %{SOURCE17} %{buildroot}/usr/libexec/nothing-spacewar/nothing-spacewar-bt-address
+install -Dm0644 %{SOURCE18} %{buildroot}/usr/lib/systemd/system/nothing-spacewar-bt-address.service
+install -Dm0644 %{SOURCE19} %{buildroot}/usr/lib/udev/rules.d/87-nothing-spacewar-bluetooth.rules
 install -Dm0755 %{SOURCE13} %{buildroot}/usr/bin/nothing-spacewar-backup
 install -Dm0644 %{SOURCE14} %{buildroot}/usr/lib/environment.d/60-nothing-spacewar-ucm.conf
 mkdir -p %{buildroot}/usr/share/nothing-spacewar/alsa %{buildroot}/etc/nothing-spacewar
@@ -103,6 +114,10 @@ cp -a ucm2 %{buildroot}/usr/share/nothing-spacewar/alsa/
 %dir /etc/nothing-spacewar
 
 %changelog
+* Wed Oct 28 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.7-1
+- Set a stable Bluetooth address at boot (derived from the serial number);
+  without one the WCN6750 stays unconfigured and BlueZ finds no controller
+
 * Wed Oct 28 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.6-1
 - Require upower so Plasma Mobile and Phosh show the battery level
 
