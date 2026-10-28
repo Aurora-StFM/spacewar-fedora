@@ -80,8 +80,6 @@ install -Dm0755 %{SOURCE10} %{buildroot}/usr/libexec/nothing-spacewar/nothing-sp
 install -Dm0644 %{SOURCE11} %{buildroot}/usr/lib/systemd/system/nothing-spacewar-usb-gadget.service
 install -Dm0644 %{SOURCE12} %{buildroot}/usr/lib/systemd/system/nothing-spacewar-usb-dhcp.service
 install -Dm0644 %{SOURCE16} %{buildroot}/usr/lib/udev/rules.d/86-nothing-spacewar-usb.rules
-/usr/lib/udev/rules.d/87-nothing-spacewar-bluetooth.rules
-/usr/lib/systemd/system/nothing-spacewar-bt-address.service
 install -Dm0755 %{SOURCE17} %{buildroot}/usr/libexec/nothing-spacewar/nothing-spacewar-bt-address
 install -Dm0644 %{SOURCE18} %{buildroot}/usr/lib/systemd/system/nothing-spacewar-bt-address.service
 install -Dm0644 %{SOURCE19} %{buildroot}/usr/lib/udev/rules.d/87-nothing-spacewar-bluetooth.rules
@@ -108,6 +106,8 @@ cp -a ucm2 %{buildroot}/usr/share/nothing-spacewar/alsa/
 /usr/lib/systemd/system/nothing-spacewar-usb-gadget.service
 /usr/lib/systemd/system/nothing-spacewar-usb-dhcp.service
 /usr/lib/udev/rules.d/86-nothing-spacewar-usb.rules
+/usr/lib/udev/rules.d/87-nothing-spacewar-bluetooth.rules
+/usr/lib/systemd/system/nothing-spacewar-bt-address.service
 /usr/lib/environment.d/60-nothing-spacewar-ucm.conf
 /usr/bin/nothing-spacewar-backup
 /usr/share/nothing-spacewar
