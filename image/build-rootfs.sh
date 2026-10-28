@@ -68,6 +68,13 @@ BASE_PKGS=(
     bluez iio-sensor-proxy upower python3 e2fsprogs
 )
 case "$UI" in
+    kde)
+        # Fedora KDE Plasma Desktop: the KDE spin's package set, with the
+        # on-screen keyboard (Maliit) for a phone without a keyboard.
+        UI_REQUIRED=(@kde-desktop-environment sddm maliit-keyboard)
+        UI_PKGS=(plasma-nm plasma-pa bluedevil powerdevil kscreen
+                 konsole dolphin firefox)
+        ;;
     phosh)
         # Fedora's Phosh is a login session (phosh-session), so something
         # has to start it: greetd logs the user straight in, Phosh's own
@@ -81,7 +88,7 @@ case "$UI" in
         UI_REQUIRED=(plasma-mobile sddm)
         UI_PKGS=(plasma-dialer spacebar maliit-keyboard konsole dolphin firefox)
         ;;
-    *) die "UI must be phosh or plasma-mobile (got '$UI')" ;;
+    *) die "UI must be kde, plasma-mobile or phosh (got '$UI')" ;;
 esac
 
 ROOT="$WORK_DIR/rootfs"
@@ -220,6 +227,56 @@ command = "agreety --cmd phosh-session"
 user = "$GREETER"
 GREETD
         systemctl --root "$ROOT" enable greetd.service >/dev/null
+        ;;
+    kde)
+        SESSION="$(find "$ROOT/usr/share/wayland-sessions" -maxdepth 1 -name 'plasma.desktop' -printf '%f\n')"
+        [ -n "$SESSION" ] || die "no Plasma session file (plasma.desktop) in /usr/share/wayland-sessions"
+        mkdir -p "$ROOT/etc/sddm.conf.d"
+        cat > "$ROOT/etc/sddm.conf.d/50-nothing-spacewar.conf" <<EOF
+[Autologin]
+User=$USER_NAME
+Session=$SESSION
+EOF
+        # System-wide KWin defaults (users can change them in System
+        # Settings): Maliit as the on-screen keyboard, so text fields work
+        # without a keyboard.
+        mkdir -p "$ROOT/etc/xdg"
+        cat > "$ROOT/etc/xdg/kwinrc" <<'EOF'
+[Wayland]
+InputMethod[$e]=/usr/share/applications/com.github.maliit.keyboard.desktop
+VirtualKeyboardEnabled=true
+EOF
+        # KWin starts the 6.55" 1080x2400 panel at 100% unless it learns the
+        # panel's size, which makes everything tiny. At the first login, set
+        # the built-in screen to 200% if it is still at 100%; after that the
+        # user's own choice in Display Configuration stays.
+        mkdir -p "$ROOT/usr/libexec/nothing-spacewar" "$ROOT/etc/xdg/autostart"
+        cat > "$ROOT/usr/libexec/nothing-spacewar/kde-first-login" <<'EOF'
+#!/usr/bin/bash
+# Nothing Phone (1): first-login display scale for Plasma (runs once per user).
+stamp="${XDG_CONFIG_HOME:-$HOME/.config}/nothing-spacewar-first-login"
+[ -e "$stamp" ] && exit 0
+sleep 3
+kscreen-doctor -j 2>/dev/null | python3 -c '
+import json, subprocess, sys
+for o in json.load(sys.stdin).get("outputs", []):
+    if o.get("connected") and o.get("enabled") and abs(o.get("scale", 1) - 1) < 0.01:
+        subprocess.run(["kscreen-doctor", "output.%s.scale.2" % o["name"]])
+        break
+' || exit 0
+mkdir -p "$(dirname "$stamp")" && touch "$stamp"
+EOF
+        chmod 0755 "$ROOT/usr/libexec/nothing-spacewar/kde-first-login"
+        cat > "$ROOT/etc/xdg/autostart/nothing-spacewar-first-login.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Nothing Phone (1) display setup
+Exec=/usr/libexec/nothing-spacewar/kde-first-login
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2
+EOF
+        systemctl --root "$ROOT" enable sddm.service >/dev/null
         ;;
     plasma-mobile)
         # SDDM's autologin wants the session file's exact name; take it from

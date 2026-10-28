@@ -77,8 +77,13 @@ sudo ./build.sh rootfs --user yourname
 ```
 
 `rootfs` asks for the password of the phone's user account. Digits make the
-lock screen easiest. Choose the shell with `UI=plasma-mobile` (default
-`phosh`) and the Fedora release with `FEDORA_RELEASE=`.
+lock screen easiest. The default shell is Fedora's regular KDE Plasma
+desktop (`UI=kde`), set up for touch: it logs straight in, uses the Maliit
+on-screen keyboard and starts at 200% scale. Plasma switches to touch mode
+by itself when no mouse is connected. For a phone shell instead, pass
+`UI=plasma-mobile` or `UI=phosh` after `sudo`
+(`sudo UI=phosh ./build.sh rootfs --user yourname`). Pick the Fedora release
+with `FEDORA_RELEASE=`.
 
 The kernel comes from a personal development branch that can be rebased.
 If `./build.sh kernel` can't fetch the pinned commit any more, pick a newer
