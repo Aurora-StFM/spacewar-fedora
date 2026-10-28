@@ -72,8 +72,11 @@ case "$UI" in
         # Fedora KDE Plasma Desktop: the KDE spin's package set, with the
         # on-screen keyboard (Maliit) for a phone without a keyboard.
         UI_REQUIRED=(@kde-desktop-environment sddm maliit-keyboard)
+        # Discover's package and Flatpak backends are weak dependencies, so
+        # without them it can't install apps.
         UI_PKGS=(plasma-nm plasma-pa bluedevil powerdevil kscreen
-                 konsole dolphin firefox)
+                 konsole dolphin firefox
+                 plasma-discover-packagekit plasma-discover-flatpak flatpak)
         ;;
     phosh)
         # Fedora's Phosh is a login session (phosh-session), so something
