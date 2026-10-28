@@ -195,7 +195,9 @@ chmod 0000 "$ROOT/etc/shadow.new"
 mv -f "$ROOT/etc/shadow.new" "$ROOT/etc/shadow"
 unset PW_HASH
 
-systemctl --root "$ROOT" preset-all >/dev/null
+# A preset conflict (two display managers wanting display-manager.service)
+# is settled below, where the UI's display manager is enabled explicitly.
+systemctl --root "$ROOT" preset-all >/dev/null || warn "some presets could not be applied (see above)"
 systemctl --root "$ROOT" set-default graphical.target >/dev/null
 case "$UI" in
     phosh)
@@ -226,13 +228,20 @@ user = "$USER_NAME"
 command = "agreety --cmd phosh-session"
 user = "$GREETER"
 GREETD
-        systemctl --root "$ROOT" enable greetd.service >/dev/null
+        systemctl --root "$ROOT" enable --force greetd.service >/dev/null
         ;;
     kde)
         SESSION="$(find "$ROOT/usr/share/wayland-sessions" -maxdepth 1 -name 'plasma.desktop' -printf '%f\n')"
         [ -n "$SESSION" ] || die "no Plasma session file (plasma.desktop) in /usr/share/wayland-sessions"
-        mkdir -p "$ROOT/etc/sddm.conf.d"
-        cat > "$ROOT/etc/sddm.conf.d/50-nothing-spacewar.conf" <<EOF
+        # Fedora 44's KDE uses Plasma Login Manager (an SDDM fork with the
+        # same configuration format); older releases use SDDM.
+        if [ -f "$ROOT/usr/lib/systemd/system/plasmalogin.service" ]; then
+            DM=plasmalogin
+        else
+            DM=sddm
+        fi
+        mkdir -p "$ROOT/etc/$DM.conf.d"
+        cat > "$ROOT/etc/$DM.conf.d/50-nothing-spacewar.conf" <<EOF
 [Autologin]
 User=$USER_NAME
 Session=$SESSION
@@ -276,7 +285,7 @@ OnlyShowIn=KDE;
 NoDisplay=true
 X-KDE-autostart-phase=2
 EOF
-        systemctl --root "$ROOT" enable sddm.service >/dev/null
+        systemctl --root "$ROOT" enable --force "$DM.service" >/dev/null
         ;;
     plasma-mobile)
         # SDDM's autologin wants the session file's exact name; take it from
@@ -289,7 +298,7 @@ EOF
 User=$USER_NAME
 Session=$SESSION
 EOF
-        systemctl --root "$ROOT" enable sddm.service >/dev/null
+        systemctl --root "$ROOT" enable --force sddm.service >/dev/null
         ;;
 esac
 
