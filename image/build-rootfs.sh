@@ -198,8 +198,11 @@ chmod 0000 "$ROOT/etc/shadow.new"
 mv -f "$ROOT/etc/shadow.new" "$ROOT/etc/shadow"
 unset PW_HASH
 
-# A preset conflict (two display managers wanting display-manager.service)
-# is settled below, where the UI's display manager is enabled explicitly.
+# A display manager's package script may already have claimed
+# display-manager.service; that makes preset-all fail part-way and leave
+# services such as sshd and bluetooth off. Drop the link first; the UI's
+# display manager is enabled explicitly below.
+rm -f "$ROOT/etc/systemd/system/display-manager.service"
 systemctl --root "$ROOT" preset-all >/dev/null || warn "some presets could not be applied (see above)"
 systemctl --root "$ROOT" set-default graphical.target >/dev/null
 case "$UI" in
