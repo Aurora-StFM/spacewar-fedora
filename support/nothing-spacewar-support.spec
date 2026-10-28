@@ -1,5 +1,5 @@
 Name:           nothing-spacewar-support
-Version:        0.7
+Version:        0.8
 Release:        1
 Summary:        Fedora integration for the Nothing Phone (1)
 License:        MIT AND BSD-3-Clause
@@ -114,6 +114,10 @@ cp -a ucm2 %{buildroot}/usr/share/nothing-spacewar/alsa/
 %dir /etc/nothing-spacewar
 
 %changelog
+* Wed Oct 28 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.8-1
+- Bluetooth address: retry until the chip's firmware setup has finished
+  (the first attempt came too early and failed with Invalid Index)
+
 * Wed Oct 28 2026 Nothing Phone 1 Fedora kit <spacewar@localhost> - 0.7-1
 - Set a stable Bluetooth address at boot (derived from the serial number);
   without one the WCN6750 stays unconfigured and BlueZ finds no controller

@@ -24,4 +24,16 @@ fi
 
 index="${hci#hci}"
 echo "setting $hci address to $BT_ADDRESS"
-btmgmt --index "$index" public-addr "$BT_ADDRESS"
+# hci0 shows up before the chip's firmware is loaded; until the driver's
+# setup finishes, the kernel rejects the address ("Invalid Index"). Retry
+# for up to a minute.
+for _ in $(seq 60); do
+    if out="$(btmgmt --index "$index" public-addr "$BT_ADDRESS" 2>&1)" \
+        && ! grep -qi 'failed' <<<"$out"; then
+        echo "done"
+        exit 0
+    fi
+    sleep 1
+done
+echo "giving up: $out" >&2
+exit 1
