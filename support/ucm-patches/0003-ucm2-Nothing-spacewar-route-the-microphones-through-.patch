@@ -1,0 +1,312 @@
+From 5b17700b076e8ab165b2b2850674a5cf88c4370c Mon Sep 17 00:00:00 2001
+From: Aurora-StFM <scp.173.x@gmail.com>
+Date: Thu, 29 Oct 2026 21:52:17 +0100
+Subject: [PATCH 3/3] ucm2: Nothing: spacewar: route the microphones through DEC0
+
+With DEC1, capture through TX_CODEC_DMA_TX_3 starts without an error but
+delivers no data (arecord: I/O error). Use DEC0 as the Fairphone 5 (same
+SoC and WCD9385) does, and map the analog microphones as measured on the
+phone: AMIC1 (ADC1, SWR_MIC0) is the bottom microphone, AMIC3 (ADC2 INP3,
+SWR_MIC1) the top one, and the headset microphone is ADC2 INP2. Keep the
+ADC1/ADC2 port switches on in the verb, since the codec driver only reads
+them in hw_params.
+
+Also use the card's own mixer ("hw:") instead of "default:", and drop the
+ctl-remap include: the global ctl.default it installs hides the card's
+controls from amixer and from PipeWire's UCM mixer. The Voice Call profile
+loses the speaker gain as its volume element (on the TFA9873 that control
+works backwards and barely changes the level).
+
+Findings from woodyst/spacewar-pmos (docs/audio-and-calls.es.md).
+
+Co-developed-by: Claude Opus 5.5 <noreply@anthropic.com>
+Signed-off-by: Aurora-StFM <scp.173.x@gmail.com>
+---
+ ucm2/Nothing/spacewar/HiFi.conf      | 123 ++++++++++-----------------
+ ucm2/Nothing/spacewar/NP1.conf       |   1 -
+ ucm2/Nothing/spacewar/VoiceCall.conf |  36 +++-----
+ 3 files changed, 56 insertions(+), 104 deletions(-)
+
+diff --git a/ucm2/Nothing/spacewar/HiFi.conf b/ucm2/Nothing/spacewar/HiFi.conf
+index caf0ade..80cb591 100644
+--- a/ucm2/Nothing/spacewar/HiFi.conf
++++ b/ucm2/Nothing/spacewar/HiFi.conf
+@@ -5,6 +5,19 @@ SectionVerb {
+ 		cset "name='PRI_MI2S_RX Audio Mixer MultiMedia1' 1"
+ 		cset "name='RX_CODEC_DMA_RX_0 Audio Mixer MultiMedia2' 1"
+ 		cset "name='MultiMedia3 Mixer TX_CODEC_DMA_TX_3' 1"
++		# Microphone ports stay on: the WCD938x driver reads 'ADCn Switch'
++		# only in hw_params, so switching them per device misses streams
++		# that are already open.
++		cset "name='ADC1_MIXER Switch' 1"
++		cset "name='ADC1 Switch' 1"
++		cset "name='ADC2_MIXER Switch' 1"
++		cset "name='ADC2 Switch' 1"
++		# DEC1 starts but delivers no data (arecord: I/O error), and ADC3/4
++		# carry nothing on this phone; capture goes through DEC0.
++		cset "name='TX_AIF1_CAP Mixer DEC1' 0"
++		cset "name='TX SMIC MUX1' ZERO"
++		cset "name='ADC3 Switch' 0"
++		cset "name='ADC4 Switch' 0"
+ 	]
+ 
+ 	DisableSequence [
+@@ -25,7 +38,7 @@ SectionDevice."Speaker" {
+ 		PlaybackChannels 2
+ 		PlaybackPriority 100
+ 		PlaybackPCM "hw:${CardId},0"
+-		PlaybackMixer "default:${CardId}"
++		PlaybackMixer "hw:${CardId}"
+ 	}
+ }
+ 
+@@ -40,7 +53,7 @@ SectionDevice."Headphones" {
+ 	Value {
+ 		PlaybackPriority 200
+ 		PlaybackPCM "hw:${CardId},1"
+-		PlaybackMixer "default:${CardId}"
++		PlaybackMixer "hw:${CardId}"
+ 		PlaybackMixerElem "HP Digital"
+ 		JackControl "Headphone Jack"
+ 		JackHWMute "Speaker"
+@@ -48,26 +61,21 @@ SectionDevice."Headphones" {
+ }
+ 
+ SectionDevice."Mic1" {
+-	Comment "Top Microphone"
++	Comment "Bottom Microphone"
+ 
+ 	EnableSequence [
+-		cset "name='TX DEC1 MUX' SWR_MIC"
+-		cset "name='TX SMIC MUX1' SWR_MIC0"
+-		cset "name='TX_AIF1_CAP Mixer DEC1' 1"
+-		cset "name='TX_DEC1 Volume' 84"
+-
++		cset "name='TX DEC0 MUX' SWR_MIC"
++		cset "name='TX SMIC MUX0' SWR_MIC0"
++		cset "name='TX_AIF1_CAP Mixer DEC0' 1"
++		cset "name='TX_DEC0 Volume' 84"
+ 		cset "name='ADC1_MIXER Switch' 1"
+ 		cset "name='ADC1 Switch' 1"
+-		cset "name='TX1 MODE' ADC_LP"
++		cset "name='TX0 MODE' ADC_NORMAL"
+ 	]
+ 
+ 	DisableSequence [
+-		cset "name='TX SMIC MUX1' ZERO"
+-		cset "name='TX_AIF1_CAP Mixer DEC1' 0"
+-
+-		cset "name='ADC1_MIXER Switch' 0"
+-		cset "name='ADC1 Switch' 0"
+-		cset "name='TX1 MODE' ADC_INVALID"
++		cset "name='TX SMIC MUX0' ZERO"
++		cset "name='TX_AIF1_CAP Mixer DEC0' 0"
+ 	]
+ 
+ 	Value {
+@@ -84,100 +92,55 @@ SectionDevice."Mic2" {
+ 	EnableSequence [
+ 		cset "name='TX DEC0 MUX' SWR_MIC"
+ 		cset "name='TX SMIC MUX0' SWR_MIC1"
+-		cset "name='TX_AIF2_CAP Mixer DEC0' 1"
++		cset "name='TX_AIF1_CAP Mixer DEC0' 1"
+ 		cset "name='DEC0 MODE' ADC_DEFAULT"
+ 		cset "name='TX_DEC0 Volume' 84"
+-
+ 		cset "name='ADC2_MIXER Switch' 1"
+ 		cset "name='HDR12 MUX' NO_HDR12"
+ 		cset "name='ADC2 MUX' INP2"
+ 		cset "name='ADC2 Switch' 1"
+-		cset "name='TX1 MODE' ADC_LP"
++		cset "name='TX1 MODE' ADC_NORMAL"
+ 	]
+ 
+ 	DisableSequence [
+ 		cset "name='TX SMIC MUX0' ZERO"
+-		cset "name='TX_AIF2_CAP Mixer DEC0' 0"
+-
+-		cset "name='ADC2_MIXER Switch' 0"
+-		cset "name='ADC2 Switch' 0"
+-		cset "name='TX1 MODE' ADC_INVALID"
++		cset "name='TX_AIF1_CAP Mixer DEC0' 0"
++		# ADC2 also carries the top microphone; point it back there.
++		cset "name='ADC2 MUX' INP3"
+ 	]
+ 
+ 	Value {
+ 		CapturePriority 150
+ 		CapturePCM "hw:${CardId},2"
+ 		CaptureMixerElem "ADC2"
+-		#JackControl "Mic Jack"
+-		#JackHWMute "Top"
+-		#JackHWMute "Bottom"
+-		#JackHWMute "Back"
+ 	}
+ }
+ 
+-SectionDevice."Mic4" {
+-	Comment "Bottom Microphone"
++SectionDevice."Mic3" {
++	Comment "Top Microphone"
+ 
+ 	EnableSequence [
+-		cset "name='TX DEC1 MUX' SWR_MIC"
+-		cset "name='TX SMIC MUX1' SWR_MIC4"
+-		cset "name='TX_AIF1_CAP Mixer DEC1' 1"
+-		cset "name='DEC1 MODE' ADC_DEFAULT"
+-		cset "name='TX_DEC1 Volume' 84"
+-
+-		cset "name='ADC3_MIXER Switch' 1"
+-		cset "name='HDR34 MUX' NO_HDR34"
+-		cset "name='ADC3 MUX' INP4"
+-		cset "name='ADC3 Switch' 1"
+-		cset "name='TX2 MODE' ADC_LP"
++		cset "name='TX DEC0 MUX' SWR_MIC"
++		cset "name='TX SMIC MUX0' SWR_MIC1"
++		cset "name='TX_AIF1_CAP Mixer DEC0' 1"
++		cset "name='DEC0 MODE' ADC_DEFAULT"
++		cset "name='TX_DEC0 Volume' 84"
++		cset "name='ADC2_MIXER Switch' 1"
++		cset "name='HDR12 MUX' NO_HDR12"
++		cset "name='ADC2 MUX' INP3"
++		cset "name='ADC2 Switch' 1"
++		cset "name='TX1 MODE' ADC_NORMAL"
+ 	]
+ 
+ 	DisableSequence [
+-		cset "name='TX SMIC MUX1' ZERO"
+-		cset "name='TX_AIF1_CAP Mixer DEC1' 0"
+-
+-		cset "name='ADC3_MIXER Switch' 0"
+-		cset "name='ADC3 Switch' 0"
+-		cset "name='TX2 MODE' ADC_INVALID"
++		cset "name='TX SMIC MUX0' ZERO"
++		cset "name='TX_AIF1_CAP Mixer DEC0' 0"
+ 	]
+ 
+ 	Value {
+ 		CaptureChannels 1
+ 		CapturePriority 100
+ 		CapturePCM "hw:${CardId},2"
+-		CaptureMixerElem "ADC3"
+-	}
+-}
+-
+-SectionDevice."Mic5" {
+-	Comment "Back Microphone"
+-
+-	EnableSequence [
+-		cset "name='TX DEC1 MUX' SWR_MIC"
+-		cset "name='TX SMIC MUX1' SWR_MIC5"
+-		cset "name='TX_AIF1_CAP Mixer DEC1' 1"
+-		cset "name='DEC1 MODE' ADC_DEFAULT"
+-		cset "name='TX_DEC1 Volume' 84"
+-
+-		cset "name='ADC4_MIXER Switch' 1"
+-		cset "name='ADC4 MUX' INP5"
+-		cset "name='ADC4 Switch' 1"
+-		cset "name='TX2 MODE' ADC_LP"
+-	]
+-
+-	DisableSequence [
+-		cset "name='TX SMIC MUX1' ZERO"
+-		cset "name='TX_AIF1_CAP Mixer DEC1' 0"
+-
+-		cset "name='ADC4_MIXER Switch' 0"
+-		cset "name='ADC4 Switch' 0"
+-		cset "name='TX2 MODE' ADC_INVALID"
+-	]
+-
+-	Value {
+-		CaptureChannels 1
+-		CapturePriority 50
+-		CapturePCM "hw:${CardId},2"
+-		CaptureMixerElem "ADC4"
++		CaptureMixerElem "ADC2"
+ 	}
+ }
+diff --git a/ucm2/Nothing/spacewar/NP1.conf b/ucm2/Nothing/spacewar/NP1.conf
+index c2ed228..bd8ae13 100644
+--- a/ucm2/Nothing/spacewar/NP1.conf
++++ b/ucm2/Nothing/spacewar/NP1.conf
+@@ -22,5 +22,4 @@ BootSequence [
+ ]
+ 
+ Include.card-init.File "/lib/card-init.conf"
+-Include.ctl-remap.File "/lib/ctl-remap.conf"
+ Include.wcd-init.File "/codecs/wcd938x/init.conf"
+diff --git a/ucm2/Nothing/spacewar/VoiceCall.conf b/ucm2/Nothing/spacewar/VoiceCall.conf
+index 0271096..6837de4 100644
+--- a/ucm2/Nothing/spacewar/VoiceCall.conf
++++ b/ucm2/Nothing/spacewar/VoiceCall.conf
+@@ -52,8 +52,7 @@ SectionDevice."Earpiece" {
+ 		PlaybackChannels 2
+ 		PlaybackPriority 200
+ 		PlaybackPCM "hw:${CardId},0"
+-		PlaybackMixer "default:${CardId}"
+-		PlaybackVolume "Speaker Top Volume"
++		PlaybackMixer "hw:${CardId}"
+ 	}
+ }
+ 
+@@ -79,26 +78,21 @@ SectionDevice."Speaker" {
+ 		PlaybackChannels 2
+ 		PlaybackPriority 100
+ 		PlaybackPCM "hw:${CardId},0"
+-		PlaybackMixer "default:${CardId}"
+-		PlaybackVolume "Speaker Bottom Volume"
++		PlaybackMixer "hw:${CardId}"
+ 	}
+ }
+ 
+-SectionDevice."Mic4" {
++SectionDevice."Mic1" {
+ 	Comment "Bottom Microphone"
+ 
+ 	EnableSequence [
+-		cset "name='TX DEC1 MUX' SWR_MIC"
+-		cset "name='TX SMIC MUX1' SWR_MIC4"
+-		cset "name='TX_AIF1_CAP Mixer DEC1' 1"
+-		cset "name='DEC1 MODE' ADC_DEFAULT"
+-		cset "name='TX_DEC1 Volume' 84"
+-
+-		cset "name='ADC3_MIXER Switch' 1"
+-		cset "name='HDR34 MUX' NO_HDR34"
+-		cset "name='ADC3 MUX' INP4"
+-		cset "name='ADC3 Switch' 1"
+-		cset "name='TX2 MODE' ADC_LP"
++		cset "name='TX DEC0 MUX' SWR_MIC"
++		cset "name='TX SMIC MUX0' SWR_MIC0"
++		cset "name='TX_AIF1_CAP Mixer DEC0' 1"
++		cset "name='TX_DEC0 Volume' 84"
++		cset "name='ADC1_MIXER Switch' 1"
++		cset "name='ADC1 Switch' 1"
++		cset "name='TX0 MODE' ADC_NORMAL"
+ 
+ 		exec "systemctl --user start dummystreamhack@Thw:${CardId},6"
+ 	]
+@@ -106,18 +100,14 @@ SectionDevice."Mic4" {
+ 	DisableSequence [
+ 		exec "systemctl --user stop dummystreamhack@Thw:${CardId},6"
+ 
+-		cset "name='TX SMIC MUX1' ZERO"
+-		cset "name='TX_AIF1_CAP Mixer DEC1' 0"
+-
+-		cset "name='ADC3_MIXER Switch' 0"
+-		cset "name='ADC3 Switch' 0"
+-		cset "name='TX2 MODE' ADC_INVALID"
++		cset "name='TX SMIC MUX0' ZERO"
++		cset "name='TX_AIF1_CAP Mixer DEC0' 0"
+ 	]
+ 
+ 	Value {
+ 		CaptureChannels 1
+ 		CapturePriority 200
+ 		CapturePCM "hw:${CardId},2"
+-		CaptureMixerElem "ADC3"
++		CaptureMixerElem "ADC1"
+ 	}
+ }
+-- 
+2.43.0
+
